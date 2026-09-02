@@ -17,15 +17,21 @@ public class RadianceCascadeGI : ModuleRules
 		
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				// ... add other private include paths required here ...
-			}
-			);
-			
-		
-		PublicDependencyModuleNames.AddRange(
+				"RadianceCascadeGI/Private"
+            }
+
+            );
+            if(Target.bBuildEditor == true)
+            {
+                PrivateDependencyModuleNames.Add("TargetPlatform");
+            }
+
+        PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"Core",
+				"Engine",
+				"MaterialShaderQualitySettings"
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -38,12 +44,34 @@ public class RadianceCascadeGI : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
+				"Renderer",
+				"RenderCore",
+				"RHI",
+				"Projects"
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
-		
-		
-		DynamicallyLoadedModuleNames.AddRange(
+			if(Target.bBuildEditor == true)
+			{
+
+				PrivateDependencyModuleNames.AddRange(
+					new string[] {
+						"UnrealEd",
+						"MaterialUtilities",
+						"SlateCore",
+						"Slate"
+					}
+				);
+
+				CircularlyReferencedDependentModules.AddRange(
+					new string[] {
+						"UnrealEd",
+						"MaterialUtilities",
+					}
+				);
+			}
+
+        DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{
 				// ... add any modules that your module loads dynamically here ...

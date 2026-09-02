@@ -2,11 +2,25 @@
 
 #include "RadianceCascadeGI.h"
 
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "RHI.h"
+#include "GlobalShader.h"
+#include "RHICommandList.h"
+#include "RenderGraphBuilder.h"
+#include "RenderTargetPool.h"
+#include "Runtime/Core/Public/Modules/ModuleManager.h"
+#include "Interfaces/IPluginManager.h"
+
 #define LOCTEXT_NAMESPACE "FRadianceCascadeGIModule"
 
 void FRadianceCascadeGIModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+
+	// Maps virtual shader source directory to the plugin's actual shaders directory.
+	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RadianceCascadeGI"))->GetBaseDir(), TEXT("Shaders/Private"));
+	AddShaderSourceDirectoryMapping(TEXT("/MyShadersShaders"), PluginShaderDir);
 }
 
 void FRadianceCascadeGIModule::ShutdownModule()
@@ -16,5 +30,5 @@ void FRadianceCascadeGIModule::ShutdownModule()
 }
 
 #undef LOCTEXT_NAMESPACE
-	
+
 IMPLEMENT_MODULE(FRadianceCascadeGIModule, RadianceCascadeGI)
