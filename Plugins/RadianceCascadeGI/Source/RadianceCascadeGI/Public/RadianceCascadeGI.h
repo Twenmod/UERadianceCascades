@@ -2,9 +2,16 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+
+#include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 
-class FRadianceCascadeGIModule : public IModuleInterface
+#include "RenderGraphResources.h"
+#include "Runtime/Engine/Classes/Engine/TextureRenderTarget2D.h"
+
+
+class RADIANCECASCADEGI_API FRadianceCascadeGIModule : public IModuleInterface
 {
 public:
 
