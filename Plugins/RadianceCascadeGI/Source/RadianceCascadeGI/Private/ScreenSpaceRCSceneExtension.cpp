@@ -3,9 +3,11 @@
 // 
 // Custom SceneViewExtension implementation
 
-#include "CustomSceneViewExtension.h"
+#include "ScreenSpaceRCSceneExtension.h"
 
-IMPLEMENT_GLOBAL_SHADER(FCustomShader, "/Plugins/SceneViewExtensionTemplate/PostProcessCS.usf", "MainCS", SF_Compute);
+#include "RenderTargetPool.h"
+
+IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCOutputShader, "/Plugins/SceneViewExtensionTemplate/PostProcessCS.usf", "MainCS", SF_Compute);
 
 namespace
 {
@@ -19,23 +21,26 @@ namespace
 }
 
 
-FCustomSceneViewExtension::FCustomSceneViewExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
+FScreenSpaceRCSceneExtension::FScreenSpaceRCSceneExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
 	UE_LOG(LogTemp, Log, TEXT("SceneViewExtensionTemplate: Custom SceneViewExtension registered"));
 }
 
-void FCustomSceneViewExtension::SubscribeToPostProcessingPass(EPostProcessingPass PassId, const FSceneView& View, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled)
+void FScreenSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessingPass PassId, const FSceneView& View, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled)
 {
 	// Define to what Post Processing stage to hook the SceneViewExtension into. See SceneViewExtension.h and PostProcessing.cpp for more info
 	if (PassId == EPostProcessingPass::MotionBlur)
 	{
-		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateRaw(this, &FCustomSceneViewExtension::CustomPostProcessing));
+		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateRaw(this, &FScreenSpaceRCSceneExtension::CustomPostProcessing));
 	}
 }
 
 
-FScreenPassTexture FCustomSceneViewExtension::CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView, const FPostProcessMaterialInputs& Inputs)
+FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView, const FPostProcessMaterialInputs& Inputs)
 {
+
+
+
 	// SceneViewExtension gives SceneView, not ViewInfo so we need to setup some basics
 	const FSceneViewFamily& ViewFamily = *SceneView.Family;
 
@@ -48,9 +53,31 @@ FScreenPassTexture FCustomSceneViewExtension::CustomPostProcessing(FRDGBuilder& 
 
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 
-	// Here starts the RDG stuff
-	RDG_EVENT_SCOPE(GraphBuilder, "Custom Postprocess Effect");
+	//Initialize resources if not there
+	if (!bInitialized)
 	{
+		auto SceneDesc = SceneColor.Texture->Desc;
+
+		//Initialize Cascade textures
+		for (int i = 0; i < CascadeCount; ++i)
+		{
+			FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DArrayDesc(
+				SceneDesc.Extent,
+				PF_FloatRGBA,
+				FClearValueBinding::Green,
+				TexCreate_None,
+				TexCreate_ShaderResource | TexCreate_RenderTargetable,
+				false,
+				CascadeCount);
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascade " + i));
+		}
+		bInitialized = true;
+	}
+
+	// Here starts the RDG stuff
+	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
+	{
+
 		// Accesspoint to our Shaders
 		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewFamily.GetFeatureLevel());
 
@@ -68,13 +95,15 @@ FScreenPassTexture FCustomSceneViewExtension::CustomPostProcessing(FRDGBuilder& 
 		}
 
 		// Create target texture
-		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Custom Effect Output Texture"));
+		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Screen space RC Output Texture"));
 
 		// Set the shader parameters
-		FCustomShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FCustomShader::FParameters>();
+		FScreenSpaceRCOutputShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FScreenSpaceRCOutputShader::FParameters>();
 
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->OriginalSceneColor = SceneColor.Texture;
+		PassParameters->ProbeCascades = GraphBuilder.RegisterExternalTexture(ProbeCascadesTexArray, ERDGTextureFlags::None);
+		AddClearRenderTargetPass(GraphBuilder, PassParameters->ProbeCascades);
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
@@ -87,11 +116,11 @@ FScreenPassTexture FCustomSceneViewExtension::CustomPostProcessing(FRDGBuilder& 
 		// Set Compute Shader and execute
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
 
-		TShaderMapRef<FCustomShader> ComputeShader(GlobalShaderMap);
+		TShaderMapRef<FScreenSpaceRCOutputShader> ComputeShader(GlobalShaderMap);
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("Custom SceneViewExtension Post Processing CS Shader %dx%d", PassViewSize.X, PassViewSize.Y),
+			RDG_EVENT_NAME("Screen Space RC Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
 			ComputeShader,
 			PassParameters,
 			GroupCount);

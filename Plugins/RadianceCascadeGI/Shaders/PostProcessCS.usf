@@ -12,6 +12,8 @@
 // SceneColor texture
 Texture2D OriginalSceneColor;
 
+Texture2DArray<float4> ProbeCascades;
+
 // SceneColor Viewport parameters
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
@@ -37,6 +39,9 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     // To test that everything is working, switch Red and Blue
     float4 OutputColor = float4(OriginalColor.z, OriginalColor.y, OriginalColor.x, OriginalColor.w);
 
+    //Sample probe
+    float4 ProbeColor = ProbeCascades.SampleLevel(GlobalPointClampedSampler, float3(sampleUV,0), 0);
+
     // Write output
-    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = OutputColor;
+    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = ProbeColor;
 }
