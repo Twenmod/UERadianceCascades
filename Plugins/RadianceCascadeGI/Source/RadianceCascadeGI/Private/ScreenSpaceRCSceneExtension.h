@@ -35,7 +35,7 @@ public:
 
 	TRefCountPtr<IPooledRenderTarget> ProbeCascadesTexArray;
 
-	int CascadeCount = 1;
+	int CascadeCount = 2;
 
 	FInt32Point CurrentResolution;
 
@@ -51,9 +51,9 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FScreenSpaceRCMarchShader, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
-		SHADER_PARAMETER(FUint32Vector2, Resolution)
 		SHADER_PARAMETER(unsigned int, Cascade)
 	END_SHADER_PARAMETER_STRUCT()
 
