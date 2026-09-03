@@ -37,6 +37,8 @@ public:
 
 	int CascadeCount = 1;
 
+	FInt32Point CurrentResolution;
+
 };
 
 
@@ -52,6 +54,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
 		SHADER_PARAMETER(FUint32Vector2, Resolution)
+		SHADER_PARAMETER(unsigned int, Cascade)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
