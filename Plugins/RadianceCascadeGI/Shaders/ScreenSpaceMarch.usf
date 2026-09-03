@@ -15,27 +15,78 @@ Texture2D OriginalSceneColor;
 RWTexture2DArray<float4> ProbeCascades;
 
 uint2 Resolution;
+uint Cascade;
+
+static const int BaseRayCount = 16;
 
 // Compute Shader code
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
 void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
+
 	// Check that we are in scope
     if (any(DispatchThreadId >= Resolution))
     {
-        return;
+        //return;
     }
 	
     // Calculate SampleUV with viewport parameters
-    float2 sampleUV = ((DispatchThreadId + 0.5)) / float2(Resolution);
+    float2 StartUV = ((DispatchThreadId + 0.5)) / float2(Resolution);
 
-    // sample OriginalColor
-    float4 OriginalColor = OriginalSceneColor.SampleLevel(GlobalPointClampedSampler, sampleUV, 0);
+    int RayCount = pow(BaseRayCount, 1+Cascade);
 
-    // To test that everything is working, switch Red and Blue
-    float4 OutputColor = float4(OriginalColor.z, OriginalColor.y, OriginalColor.x, OriginalColor.w);
+    float Partial = 0.125;
+    float IntervalStart = RayCount == BaseRayCount ? 0.0 : Partial;
+    float IntervalEnd = RayCount == BaseRayCount ? Partial : sqrt(2.0);
 
+    float4 Radiance = float4(0.0, 0.0, 0.0, 0.0);
 
+    //March SceneColor
+    for (int i = 0; i < RayCount; i++)
+    {
+        float Index = float(i);
+	    // Add 0.5 radians to avoid vertical angles
+        float AngleStep = (Index + 0.5);
+        float Angle = ((2 * PI) / RayCount) * AngleStep;
+        float2 RayDirection = float2(cos(Angle), -sin(Angle));
+
+	    // Start in our decided starting location
+		// Keep track of how far we've gone
+        float Traveled = IntervalStart;
+        float4 RadDelta = float4(0.0, 0.0, 0.0, 0.0);
+
+       //March the texture
+        int MaxSteps = Resolution.x;
+
+        for (int Step = 1; Step < MaxSteps; Step++)
+        {
+
+		    // Go the direction we're traveling
+            float2 SampleUv = StartUV + RayDirection * Traveled;
+
+            if (any(SampleUv > 1.0) || any(SampleUv < 0.0))
+            {
+                break;
+            }
+            float4 ColorSample = OriginalSceneColor.SampleLevel(GlobalPointClampedSampler, SampleUv, 0);
+			//Hardcoded "hit"
+            if (ColorSample.r > 0.0 || ColorSample.b > 0)
+            {
+                RadDelta += float4(0, 0, ColorSample.b, 1.0);
+            }
+	    	// Stop if we've gone our interval length!
+            Traveled += (1 / float2(Resolution).x);
+            if (Traveled >= IntervalEnd)
+            {
+                break;
+            }
+        }
+		// Accumulate total radiance
+        Radiance += RadDelta;
+    }
+    float4 Output = Radiance / RayCount;
     // Write output
-    ProbeCascades[uint3(DispatchThreadId, 0)] = OutputColor;
+    uint2 OutputCoord = Cascade == 0 ? DispatchThreadId : DispatchThreadId * 2;
+
+    ProbeCascades[uint3(OutputCoord, 0)] += Output;
 }
