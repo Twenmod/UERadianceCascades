@@ -41,7 +41,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 
     //Sample probe
     float4 ProbeColor = ProbeCascades.SampleLevel(GlobalBilinearClampedSampler, float3(sampleUV,0), 0);
-    ProbeColor += ProbeCascades.SampleLevel(GlobalBilinearClampedSampler, float3((float2(SceneColorViewport_ViewportMin) + (DispatchThreadId + 0.5)) * SceneColorViewport_ExtentInverse * 0.5, 1), 0);
+    if (ProbeColor.a <= 0.0) ProbeColor = ProbeCascades.SampleLevel(GlobalBilinearClampedSampler, float3((float2(SceneColorViewport_ViewportMin) + (DispatchThreadId + 0.5)) * SceneColorViewport_ExtentInverse * 0.5, 1), 0);
 
     // Write output
     Output[SceneColorViewport_ViewportMin + DispatchThreadId] = ProbeColor;

@@ -40,8 +40,6 @@ void FScreenSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessing
 FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView, const FPostProcessMaterialInputs& Inputs)
 {
 
-
-
 	// SceneViewExtension gives SceneView, not ViewInfo so we need to setup some basics
 	const FSceneViewFamily& ViewFamily = *SceneView.Family;
 
@@ -66,9 +64,9 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DArrayDesc(
 			Resolution,
 			PF_FloatRGBA,
-			FClearValueBinding::Green,
+			FClearValueBinding::Black,
 			TexCreate_None,
-			TexCreate_ShaderResource | TexCreate_UAV,
+			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
 			false,
 			CascadeCount);
 		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascades"));
@@ -104,13 +102,13 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade0 = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
 		MarchParametersCascade0->ProbeCascades = ProbeUAV;
 		MarchParametersCascade0->OriginalSceneColor = SceneColor.Texture;
-		MarchParametersCascade0->Resolution = FUint32Vector2(MarchPassViewSize.X, MarchPassViewSize.Y);
+		MarchParametersCascade0->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 
 		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
 		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
 
 		//Clear probes
-		AddClearUAVPass(GraphBuilder, ProbeUAV, 0.f);
+		AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
 		//Marching pass Fills Probe
 
 		//First Cascade
@@ -128,8 +126,9 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		//Second Cascade
 		MarchParametersCascade1->ProbeCascades = ProbeUAV;
 		MarchParametersCascade1->OriginalSceneColor = SceneColor.Texture;
-		MarchParametersCascade1->Resolution = FUint32Vector2(MarchPassViewSize.X, MarchPassViewSize.Y) / 2;
 		MarchParametersCascade1->Cascade = 1;
+		MarchParametersCascade1->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+
 		FIntVector MarchGroupCount1 = FComputeShaderUtils::GetGroupCount(MarchPassViewSize / 2, FComputeShaderUtils::kGolden2DGroupSize);
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
