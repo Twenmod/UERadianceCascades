@@ -8,6 +8,7 @@
 #include "RenderTargetPool.h"
 
 IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCOutputShader, "/Plugins/SceneViewExtensionTemplate/PostProcessCS.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCMarchShader, "/Plugins/SceneViewExtensionTemplate/ScreenSpaceMarch.usf", "MainCS", SF_Compute);
 
 namespace
 {
@@ -61,12 +62,15 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		//Initialize Cascade textures
 		for (int i = 0; i < CascadeCount; ++i)
 		{
+			//Lower res
+			FIntPoint Resolution = SceneDesc.Extent / 2;
+
 			FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DArrayDesc(
-				SceneDesc.Extent,
+				Resolution,
 				PF_FloatRGBA,
 				FClearValueBinding::Green,
 				TexCreate_None,
-				TexCreate_ShaderResource | TexCreate_RenderTargetable,
+				TexCreate_ShaderResource | TexCreate_UAV,
 				false,
 				CascadeCount);
 			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascade " + i));
@@ -94,6 +98,29 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			OutputDesc.ClearValue = FClearValueBinding(ClearColor);
 		}
 
+		FRDGTextureRef ProbeCascadeTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadesTexArray, ERDGTextureFlags::None);
+
+		auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
+		//TODO: correct size
+		FIntPoint MarchPassViewSize = SceneColor.ViewRect.Size() / 2;
+
+		FScreenSpaceRCMarchShader::FParameters* MarchParameters = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
+		MarchParameters->ProbeCascades = ProbeUAV;
+		MarchParameters->OriginalSceneColor = SceneColor.Texture;
+		MarchParameters->Resolution = FUint32Vector2(MarchPassViewSize.X, MarchPassViewSize.Y);
+
+		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
+		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+
+		//Marching pass Fills Probe
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("Screen Space RC Marching pass %dx%d", MarchPassViewSize.X, MarchPassViewSize.Y),
+			MarchShader,
+			MarchParameters,
+			MarchGroupCount);
+
+
 		// Create target texture
 		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Screen space RC Output Texture"));
 
@@ -103,7 +130,6 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->OriginalSceneColor = SceneColor.Texture;
 		PassParameters->ProbeCascades = GraphBuilder.RegisterExternalTexture(ProbeCascadesTexArray, ERDGTextureFlags::None);
-		AddClearRenderTargetPass(GraphBuilder, PassParameters->ProbeCascades);
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
@@ -112,6 +138,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		// Create UAV from Target Texture
 		PassParameters->Output = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(OutputTexture));
+
 
 		// Set Compute Shader and execute
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize, FComputeShaderUtils::kGolden2DGroupSize);

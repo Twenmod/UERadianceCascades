@@ -41,17 +41,17 @@ public:
 
 
 // Marches the probes to fill them
-class RADIANCECASCADEGI_API FScreenSpaceRCFillShader : public FGlobalShader
+class RADIANCECASCADEGI_API FScreenSpaceRCMarchShader : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FScreenSpaceRCFillShader)
+	DECLARE_GLOBAL_SHADER(FScreenSpaceRCMarchShader)
 
-	SHADER_USE_PARAMETER_STRUCT(FScreenSpaceRCFillShader, FGlobalShader)
+	SHADER_USE_PARAMETER_STRUCT(FScreenSpaceRCMarchShader, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
+		SHADER_PARAMETER(FUint32Vector2, Resolution)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
