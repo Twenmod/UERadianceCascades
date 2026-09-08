@@ -90,6 +90,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray, ProbeCascades)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER(unsigned int, DisplayCascade)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization

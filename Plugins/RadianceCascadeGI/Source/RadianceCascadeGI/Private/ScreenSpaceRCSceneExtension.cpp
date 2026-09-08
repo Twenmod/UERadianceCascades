@@ -13,11 +13,18 @@ IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCMarchShader, "/Plugins/SceneViewExtensionT
 namespace
 {
 	TAutoConsoleVariable<int32> CVarShaderOn(
-		TEXT("r.ScreenSpaceRC"),
+		TEXT("r.RCScreenSpaceEnabled"),
 		1,
 		TEXT("Enable Screen Space RC \n")
 		TEXT(" 0: OFF;")
 		TEXT(" 1: ON."),
+		ECVF_RenderThreadSafe);
+
+
+	TAutoConsoleVariable<int32> CVarDisplayCascade(
+		TEXT("r.RCDisplayCascade"),
+		0,
+		TEXT("Display a specific cascade \n"),
 		ECVF_RenderThreadSafe);
 }
 
@@ -142,6 +149,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+		PassParameters->DisplayCascade = CVarDisplayCascade->GetInt();
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 
