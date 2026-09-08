@@ -41,7 +41,7 @@ static const int BaseRayCount = 16;
 
 	float2 ProbeCenter = (ProbeRelativePosition + 0.5) * Spacing;
 
-	float Partial = 0.0525;
+	float Partial = 0.125;
 	float IntervalStart = RayCount == BaseRayCount ? 0.0 : Partial;
 	float IntervalEnd = RayCount == BaseRayCount ? Partial : sqrt(2.0);
 
