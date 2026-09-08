@@ -12,12 +12,13 @@
 // SceneColor texture
 Texture2D OriginalSceneColor;
 
+Texture2DArray<float4> ProbeCascadesRead;
 RWTexture2DArray<float4> ProbeCascades;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 uint Cascade;
-
-static const int BaseRayCount = 16;
+uint CascadeCount;
+uint BaseRayCount;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -27,23 +28,25 @@ static const int BaseRayCount = 16;
 	{
 		return;
 	}
+	float ShortestSide = min(SceneColorViewport_Extent.x, SceneColorViewport_Extent.y);
+	float2 Scale = ShortestSide * SceneColorViewport_ExtentInverse;  // Aspect correction
 
 	int RayCount = pow(BaseRayCount, 1 + Cascade);
 	float SqrtBase = sqrt(float(BaseRayCount));
-	float Spacing = RayCount == BaseRayCount ? 1.0 : SqrtBase;
+    float Spacing = pow(SqrtBase, Cascade);
 	float2 Size = floor(SceneColorViewport_Extent / Spacing);
 
 	// Current probe
-	float2 ProbeRelativePosition = PixelId % Size;
-	float2 RayPos = floor(PixelId / Size);
-	// Base index of the rays for knowing which angle to start
+	float2 ProbeRelativePosition = DispatchThreadId % Size;
+    float2 RayPos = min(floor(DispatchThreadId / Size), Spacing - 1.0); 
+    // Base index of the rays for knowing which angle to start
 	float BaseIndex = float(BaseRayCount) * (RayPos.x + (Spacing * RayPos.y));
 
-	float2 ProbeCenter = (ProbeRelativePosition + 0.5) * Spacing;
+    float2 ProbeCenter = (ProbeRelativePosition + 0.5) * Spacing + SceneColorViewport_ViewportMin;
 
-	float Partial = 0.125;
-	float IntervalStart = RayCount == BaseRayCount ? 0.0 : Partial;
-	float IntervalEnd = RayCount == BaseRayCount ? Partial : sqrt(2.0);
+	float IntervalStart = Cascade == 0.0 ? 0.0 : (pow(BaseRayCount, Cascade - 1.0)) / ShortestSide;
+	float IntervalLength = pow(BaseRayCount, Cascade) / ShortestSide;
+    float IntervalEnd = IntervalStart + IntervalLength;
 
 	float4 Radiance = float4(0.0, 0.0, 0.0, 0.0);
 
@@ -58,7 +61,7 @@ static const int BaseRayCount = 16;
 
 		float4 RadDelta = float4(0.0, 0.0, 0.0, 1.0);
 
-        float2 DdaOrigin = ProbeCenter + RayDirection * (IntervalStart * SceneColorViewport_Extent.x);
+		float2 DdaOrigin = ProbeCenter + RayDirection * (IntervalStart * ShortestSide);
 
 		int2 MapPos = int2(floor(DdaOrigin));
 
@@ -94,7 +97,7 @@ static const int BaseRayCount = 16;
 			}
 
 			// Convert texel-space distance to the same normalized units IntervalStart/IntervalEnd use
-			Traveled = IntervalStart + T * SceneColorViewport_ExtentInverse.x;
+			Traveled = IntervalStart + T / ShortestSide;
 
 			// Out of viewport bounds
 			if (any(MapPos < int2(SceneColorViewport_ViewportMin)) || any(MapPos >= int2(SceneColorViewport_ViewportMax)))
@@ -108,7 +111,7 @@ static const int BaseRayCount = 16;
 				break;
 			}
 
-			float4 ColorSample = OriginalSceneColor.Load(int3(MapPos, 0));
+            float4 ColorSample = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, float2(MapPos * SceneColorViewport_ExtentInverse), 0.0);
 
 			// Hardcoded "hit"
 			if (ColorSample.r > 0.0 || ColorSample.b > 0.0)
@@ -118,25 +121,26 @@ static const int BaseRayCount = 16;
 				break;
 			}
 		}
-		if (RayCount == BaseRayCount && RadDelta.a != 0.0)
+        
+		if (Cascade < CascadeCount-1 && RadDelta.a != 0.0)
 		{
 			// Merge upper cascade
 
 			// The spacing between probes
-			float UpperSpacing = SqrtBase;
+            float UpperSpacing = pow(SqrtBase,Cascade+1);
 			// Grid of probes
-            float2 UpperSize = floor(SceneColorViewport_Extent / UpperSpacing);
-			// Position of _this_ probe
-			float2 UpperPosition = float2(Index % SqrtBase, floor(Index / UpperSpacing)) * UpperSize;
+			float2 UpperSize = floor(SceneColorViewport_Extent / UpperSpacing);
+			// Position of this probe
+            float2 UpperPosition = float2(Index % SqrtBase, floor(Index / SqrtBase)) * UpperSize;
 
-			float2 Offset = (ProbeRelativePosition + 0.5) / SqrtBase;
+            float2 Offset = clamp((ProbeRelativePosition + 0.5) / SqrtBase, float2(0.5, 0.5), UpperSize - 0.5);
 
-            RadDelta += ProbeCascades.Load(int4(UpperPosition + Offset,Cascade+1,0.0));
+            RadDelta += ProbeCascadesRead.SampleLevel(GlobalBilinearClampedSampler, float3((UpperPosition + Offset) * SceneColorViewport_ExtentInverse, Cascade + 1), 0.0);
         }
 		// Accumulate total radiance
 		Radiance += RadDelta;
 	}
-	float4 Output = Radiance / RayCount;
+    float4 Output = Radiance / float(BaseRayCount);
 
-	ProbeCascades[uint3(PixelId, Cascade)] = Output;
+    ProbeCascades[uint3(PixelId, Cascade)] = Output;
 }

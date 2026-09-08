@@ -11,7 +11,7 @@
 #include "PostProcess/PostProcessMaterial.h"
 #include "DataDrivenShaderPlatformInfo.h"
 
-static constexpr int MAX_CASCADES = 8;
+static constexpr int MAX_CASCADES = 32;
 
 class FScreenSpaceRCSceneExtension : public FSceneViewExtensionBase
 {
@@ -35,8 +35,6 @@ public:
 
 	TRefCountPtr<IPooledRenderTarget> ProbeCascadesTexArray;
 
-	int CascadeCount = 2;
-
 	FInt32Point CurrentResolution;
 
 };
@@ -53,8 +51,11 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray<float4>, ProbeCascadesRead)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
 		SHADER_PARAMETER(unsigned int, Cascade)
+		SHADER_PARAMETER(unsigned int, CascadeCount)
+		SHADER_PARAMETER(unsigned int, BaseRayCount)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization

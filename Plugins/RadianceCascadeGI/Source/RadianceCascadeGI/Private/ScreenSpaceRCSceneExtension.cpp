@@ -68,7 +68,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			TexCreate_None,
 			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
 			false,
-			CascadeCount);
+			MAX_CASCADES);
 		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascades"));
 		bInitialized = true;
 	}
@@ -99,41 +99,36 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		//TODO: correct size
 		FIntPoint MarchPassViewSize = SceneColor.ViewRect.Size();
 
-		FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade0 = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
-		MarchParametersCascade0->ProbeCascades = ProbeUAV;
-		MarchParametersCascade0->OriginalSceneColor = SceneColor.Texture;
-		MarchParametersCascade0->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-
-		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
-		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
-
 		//Clear probes
 		AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
+
+
 		//Marching pass Fills Probe
 
-		//Second Cascade
-		FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade1 = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
-		MarchParametersCascade1->ProbeCascades = ProbeUAV;
-		MarchParametersCascade1->OriginalSceneColor = SceneColor.Texture;
-		MarchParametersCascade1->Cascade = 1;
-		MarchParametersCascade1->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+		constexpr int BaseRayCount = 4;
 
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Screen Space RC Marching pass Cascade 1 %dx%d", MarchPassViewSize.X, MarchPassViewSize.Y),
-			MarchShader,
-			MarchParametersCascade1,
-			MarchGroupCount);
+		float Diagonal = sqrt(MarchPassViewSize.X * MarchPassViewSize.X + MarchPassViewSize.Y * MarchPassViewSize.Y);
 
-		//First Cascade
-		MarchParametersCascade0->Cascade = 0;
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("Screen Space RC Marching pass Cascade 0 %dx%d", MarchPassViewSize.X, MarchPassViewSize.Y),
-			MarchShader,
-			MarchParametersCascade0,
-			MarchGroupCount);
+		int CascadeCount = ceil(log(Diagonal) / log(BaseRayCount)) + 1;
+		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
+		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+		for (int i = CascadeCount - 1; i >= 0; --i)
+		{
 
+			FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
+			MarchParametersCascade->ProbeCascades = ProbeUAV;
+			MarchParametersCascade->ProbeCascadesRead = ProbeCascadeTexture;
+			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
+			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+			MarchParametersCascade->BaseRayCount = BaseRayCount;
+			MarchParametersCascade->Cascade = i;
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("Screen Space RC Pass Cascade %d", i),
+				MarchShader,
+				MarchParametersCascade,
+				MarchGroupCount);
+		}
 
 		// Create target texture
 		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Screen space RC Output Texture"));
@@ -143,7 +138,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->OriginalSceneColor = SceneColor.Texture;
-		PassParameters->ProbeCascades = GraphBuilder.RegisterExternalTexture(ProbeCascadesTexArray, ERDGTextureFlags::None);
+		PassParameters->ProbeCascades = ProbeCascadeTexture;
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
