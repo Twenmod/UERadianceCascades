@@ -6,6 +6,8 @@
 #include "ScreenSpaceRCSceneExtension.h"
 
 #include "RenderTargetPool.h"
+#include "SceneRendering.h"
+#include "SceneTextureParameters.h"
 
 IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCOutputShader, "/Plugins/SceneViewExtensionTemplate/PostProcessCS.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCMarchShader, "/Plugins/SceneViewExtensionTemplate/ScreenSpaceMarch.usf", "MainCS", SF_Compute);
@@ -37,7 +39,7 @@ FScreenSpaceRCSceneExtension::FScreenSpaceRCSceneExtension(const FAutoRegister& 
 void FScreenSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessingPass PassId, const FSceneView& View, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled)
 {
 	// Define to what Post Processing stage to hook the SceneViewExtension into. See SceneViewExtension.h and PostProcessing.cpp for more info
-	if (PassId == EPostProcessingPass::MotionBlur)
+	if (PassId == EPostProcessingPass::BeforeDOF)
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateRaw(this, &FScreenSpaceRCSceneExtension::CustomPostProcessing));
 	}
@@ -49,6 +51,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	// SceneViewExtension gives SceneView, not ViewInfo so we need to setup some basics
 	const FSceneViewFamily& ViewFamily = *SceneView.Family;
+
 
 	const FScreenPassTexture& SceneColor = FScreenPassTexture::CopyFromSlice(GraphBuilder, Inputs.GetInput(EPostProcessMaterialInput::SceneColor));
 
@@ -79,13 +82,37 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascades"));
 		bInitialized = true;
 	}
+	// Accesspoint to our Shaders
+	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewFamily.GetFeatureLevel());
 
-	// Here starts the RDG stuff
+
+	check(SceneView.bIsViewInfo);
+	const FViewInfo& ViewInfo = static_cast<const FViewInfo&>(SceneView);
+
+	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
+
+	FRDGTextureRef HZBTexture = ViewInfo.HZB;        // furthest HZB
+	FVector2f HZBUvFactor(1.0f, 1.0f);
+
+
+	if (HZBTexture)
+	{
+		const FIntPoint HZBExtent = HZBTexture->Desc.Extent;
+		HZBUvFactor = FVector2f(
+			float(ViewInfo.ViewRect.Width()) / float(2 * HZBExtent.X),
+			float(ViewInfo.ViewRect.Height()) / float(2 * HZBExtent.Y));
+		UE_LOG(LogTemp, Log, TEXT("HZB IS THERE"));
+
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("HZB IS NOT THERE"));
+		HZBTexture = SystemTextures.Black;
+	}
+
+
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
-
-		// Accesspoint to our Shaders
-		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewFamily.GetFeatureLevel());
 
 		// Setup all the descriptors to create a target texture
 		FRDGTextureDesc OutputDesc;
@@ -123,12 +150,18 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		{
 
 			FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
+			MarchParametersCascade->View = ViewInfo.ViewUniformBuffer;
 			MarchParametersCascade->ProbeCascades = ProbeUAV;
 			MarchParametersCascade->ProbeCascadesRead = ProbeCascadeTexture;
 			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
+			MarchParametersCascade->SceneDepth = ViewInfo.GetSceneTextures().Depth.Resolve;
 			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 			MarchParametersCascade->BaseRayCount = BaseRayCount;
 			MarchParametersCascade->Cascade = i;
+
+			MarchParametersCascade->HZB = HZBTexture;
+			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
+
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("Screen Space RC Pass Cascade %d", i),
