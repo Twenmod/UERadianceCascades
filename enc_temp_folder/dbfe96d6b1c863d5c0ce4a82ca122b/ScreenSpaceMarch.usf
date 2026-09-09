@@ -82,7 +82,7 @@ uint BaseRayCount;
                     * View.BufferSizeAndInvSize.zw;
         float Depth = SceneDepth.SampleLevel(GlobalBilinearClampedSampler, StartDepthUV, 0);
 
-        const float ThicknessWorld = 2.0; // Approximate Thickness for blocking geo
+        const float ThicknessWorld = 20.0; // Approximate Thickness for blocking geo
         float LinearDepth = ConvertFromDeviceZ(Depth);
 
 		// Do a screen space depth trace
@@ -101,8 +101,9 @@ uint BaseRayCount;
         if (bFoundHit)
         {
             float2 HitViewportUV = HitUVz.xy * HZBUvFactorAndInv.zw;
-            float2 HitBufferUV = HitUVz.xy * SceneColorViewport_UVViewportSize + SceneColorViewport_UVViewportMin;
+			float2 HitBufferUV = (HitViewportUV + SceneColorViewport_UVViewportMin);
             float4 ColorSample = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, float2(HitBufferUV.xy), 0.0);
+            RadDelta.rgb = float3(HitBufferUV.rg, 0.0)*0.2;
             RadDelta.rgb += ColorSample;
             RadDelta.a = 0.0;
         }
@@ -111,7 +112,7 @@ uint BaseRayCount;
             RadDelta.a = 1.0;
         }
 
-		if (Cascade < CascadeCount - 1 && RadDelta.a != 0.0)
+		if (Cascade < CascadeCount - 1 && RadDelta.a != 0.0 && 0)
 		{
 			// Merge upper cascade
 
