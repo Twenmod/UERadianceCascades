@@ -91,17 +91,17 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
-	FRDGTextureRef HZBTexture = ViewInfo.HZB;        // furthest HZB
+	FRDGTextureRef HZBTexture = ViewInfo.ClosestHZB;
 	FVector2f HZBUvFactor(1.0f, 1.0f);
 
 
 	if (HZBTexture)
 	{
 		const FIntPoint HZBExtent = HZBTexture->Desc.Extent;
+		const FIntPoint HZBSourceRect = ViewInfo.ViewRect.Size();
 		HZBUvFactor = FVector2f(
-			float(ViewInfo.ViewRect.Width()) / float(2 * HZBExtent.X),
-			float(ViewInfo.ViewRect.Height()) / float(2 * HZBExtent.Y));
-		UE_LOG(LogTemp, Log, TEXT("HZB IS THERE"));
+			static_cast<float>(HZBSourceRect.X) / static_cast<float>(2 * HZBExtent.X),
+			static_cast<float>(HZBSourceRect.Y) / static_cast<float>(2 * HZBExtent.Y));
 
 	}
 	else
@@ -109,8 +109,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		UE_LOG(LogTemp, Log, TEXT("HZB IS NOT THERE"));
 		HZBTexture = SystemTextures.Black;
 	}
-
-
+	UE_LOG(LogTemp, Log, TEXT("Extent %s | ViewportSize %s"),
+		*SceneColor.Texture->Desc.Extent.ToString(), *SceneColor.ViewRect.Size().ToString());
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
 
@@ -131,7 +131,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
 		//TODO: correct size
-		FIntPoint MarchPassViewSize = SceneColor.ViewRect.Size();
+		FIntPoint MarchPassViewSize = SceneDesc.Extent;
 
 		//Clear probes
 		AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
@@ -146,6 +146,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		int CascadeCount = ceil(log(Diagonal) / log(BaseRayCount)) + 1;
 		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
 		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+		auto DepthTexture = ViewInfo.GetSceneTextures().Depth.Resolve;
+		FScreenPassTextureViewport TraceViewport(DepthTexture, ViewInfo.ViewRect);
 		for (int i = CascadeCount - 1; i >= 0; --i)
 		{
 
@@ -154,10 +156,11 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->ProbeCascades = ProbeUAV;
 			MarchParametersCascade->ProbeCascadesRead = ProbeCascadeTexture;
 			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
-			MarchParametersCascade->SceneDepth = ViewInfo.GetSceneTextures().Depth.Resolve;
+			MarchParametersCascade->SceneDepth = DepthTexture;
 			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 			MarchParametersCascade->BaseRayCount = BaseRayCount;
 			MarchParametersCascade->Cascade = i;
+			MarchParametersCascade->TraceViewport = GetScreenPassTextureViewportParameters(TraceViewport);
 
 			MarchParametersCascade->HZB = HZBTexture;
 			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
