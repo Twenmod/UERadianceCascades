@@ -49,13 +49,17 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FScreenSpaceRCMarchShader, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray<float4>, ProbeCascadesRead)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
 		SHADER_PARAMETER(unsigned int, Cascade)
 		SHADER_PARAMETER(unsigned int, CascadeCount)
 		SHADER_PARAMETER(unsigned int, BaseRayCount)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HZB)
+		SHADER_PARAMETER(FVector4f, HZBUvFactorAndInv)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
