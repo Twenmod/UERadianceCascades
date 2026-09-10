@@ -64,6 +64,7 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 	{
 		return;
 	}
+	float ShortestSide = min(SceneColorViewport_ViewportSize.x, SceneColorViewport_ViewportSize.y);
 
 	int RayCount = pow(BaseRayCount, 1 + Cascade);
 	float SqrtBase = sqrt(float(BaseRayCount));
@@ -78,12 +79,9 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 
 	float2 ProbeCenter = (ProbeRelativePosition + 0.5) * Spacing + SceneColorViewport_ViewportMin;
 
-    static const float BaseIntervalPixels = 4.0;
-
-    float Scale = pow(float(BaseRayCount), float(Cascade));
-    float IntervalLength = BaseIntervalPixels * Scale;
-    float IntervalStart = BaseIntervalPixels * (Scale - 1.0) / (float(BaseRayCount) - 1.0);
-    float IntervalEnd = IntervalStart + IntervalLength;
+	float IntervalStart = Cascade == 0.0 ? 0.0 : (pow(BaseRayCount, Cascade - 1.0)) / ShortestSide;
+	float IntervalLength = pow(BaseRayCount, Cascade) / ShortestSide;
+	float IntervalEnd = IntervalStart + IntervalLength;
 
 	float4 Radiance = float4(0.0, 0.0, 0.0, 0.0);
 
@@ -98,15 +96,6 @@ uint BitsForSpan(float ThetaA, float ThetaB)
     FGBufferData GBuffer = GetGBufferData(ProbeBufferUV);
     float3 ProbeNormalWS = GBuffer.WorldNormal;
     float3 ProbeNormal = mul(ProbeNormalWS, (float3x3) View.TranslatedWorldToView);
-
-    float3 ViewDir = normalize(-ProbeViewPos);
-
-    if (ProbeDeviceZ <= 0.0)
-    {
-        ProbeCascade[PixelId] = float4(0, 0, 0, 1);
-        return;
-    }
-
 	// March SceneColor
 	for (int i = 0; i < BaseRayCount; i++)
 	{
@@ -119,37 +108,22 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 		float2 DirUV = (DirPixel - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
 		float2 DirNDC = ViewportUVToScreenPos(DirUV);
 		float3 DirViewPos = float3(DirNDC * ProbeDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
-        float3 SliceRaw = DirViewPos - ProbeViewPos;
-        float3 T = SliceRaw - ViewDir * dot(SliceRaw, ViewDir);
-        float TLen = length(T);
-        if (TLen < 1e-6)
-            continue; // degenerate slice
-        T /= TLen;
-
-        float NTheta = SliceAngle(ProbeNormal, T, ViewDir);
-        uint NormalMask = BitsForSpan(NTheta - PI * 0.5, NTheta + PI * 0.5);
-        float NormalSectorCount = max(1.0, (float) countbits(NormalMask));
 		float4 RadDelta = float4(0.0, 0.0, 0.0, 1.0);
 
         uint OcclusionBits = 0;
         float3 SliceRadiance = 0;
-        const float ThicknessWorld = 20.0;
-        const int MaxSteps = 16;
+
+        const int NumSteps = 16;
+        float StepPixels = max(1.0, IntervalLength / float(NumSteps));
+
+// Bias off the origin so the probe's own surface doesn't self-occlude.
         float T0 = max(IntervalStart, 1.0);
-        float Span = IntervalEnd - T0;
-        if (Span <= 0.0)
-        {
-            Radiance += RadDelta;
-            continue;
-        }
 
-        int NumSteps = (int) clamp(ceil(Span), 1.0, (float) MaxSteps);
-        float StepPixels = Span / (float) NumSteps;
-
-[loop]
         for (int Step = 0; Step < NumSteps; Step++)
         {
             float t = T0 + (float(Step) + 0.5) * StepPixels;
+            if (t >= IntervalEnd)
+                break;
 
             float2 SamplePixel = ProbeCenter + RayDirection * t;
             if (any(SamplePixel < SceneColorViewport_ViewportMin) ||
@@ -170,7 +144,7 @@ uint BitsForSpan(float ThetaA, float ThetaB)
             float3 DeltaBack = DeltaFront + AwayFromCamera * ThicknessWorld;
 
             uint SectorMask = BitsForSpan(SliceAngle(DeltaFront, T, ViewDir),
-                              SliceAngle(DeltaBack, T, ViewDir));
+                                  SliceAngle(DeltaBack, T, ViewDir));
             SectorMask &= NormalMask;
 
             uint NewBits = SectorMask & ~OcclusionBits;
@@ -200,9 +174,9 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 			float2 Offset = ((ProbeRelativePosition + 0.5) * (UpperSize / Size));
 			float4 UpperCascade = PreviousProbeCascade.SampleLevel(
 				GlobalBilinearClampedSampler, (UpperPosition + Offset + SceneColorViewport_ViewportMin) * SceneColorViewport_ExtentInverse, 0.0);
-            RadDelta.rgb += RadDelta.a * UpperCascade.rgb;
-            RadDelta.a *= UpperCascade.a;
-        }
+			//RadDelta.rgb += RadDelta.a * UpperCascade.rgb;
+			//RadDelta.a *= UpperCascade.a;
+		}
 		// Accumulate total radiance
 		Radiance += RadDelta;
 	}
