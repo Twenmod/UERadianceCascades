@@ -8,8 +8,9 @@ public class RadianceCascadeGI : ModuleRules
 	public RadianceCascadeGI(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
-		PublicDependencyModuleNames.AddRange(new string[] {
+
+		PublicDependencyModuleNames.AddRange(new string[]
+		{
 			"Core",
 			"CoreUObject",
 			"Engine",
@@ -18,17 +19,23 @@ public class RadianceCascadeGI : ModuleRules
 			"RHI",
 			"Projects",
 			"DeveloperSettings"
-        });
+		});
 
-        var EngineDir = Path.GetFullPath(Target.RelativeEnginePath);
+		var EngineDir = Path.GetFullPath(Target.RelativeEnginePath);
 
-        PrivateIncludePaths.AddRange(
-			new string[] {
+		PrivateIncludePaths.AddRange(
+			new string[]
+			{
 				"RadianceCascadeGI/Private",
-                Path.Combine(EngineDir, "Source/Runtime/Renderer/Private"),
+				Path.Combine(EngineDir, "Source/Runtime/Renderer/Private"),
 				Path.Combine(EngineDir, "Source/Runtime/Renderer/Internal")
-            }
+			}
 
-            );
+		);
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("DirectoryWatcher");
+		}
 	}
 }

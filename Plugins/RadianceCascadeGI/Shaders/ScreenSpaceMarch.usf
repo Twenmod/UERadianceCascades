@@ -56,6 +56,37 @@ uint BitsForSpan(float ThetaA, float ThetaB)
     return Mask << Start;
 }
 
+//temp
+float3 hueShift(float3 color, float hueAdjust)
+{
+
+    const float3 kRGBToYPrime = float3(0.299, 0.587, 0.114);
+    const float3 kRGBToI = float3(0.596, -0.275, -0.321);
+    const float3 kRGBToQ = float3(0.212, -0.523, 0.311);
+
+    const float3 kYIQToR = float3(1.0, 0.956, 0.621);
+    const float3 kYIQToG = float3(1.0, -0.272, -0.647);
+    const float3 kYIQToB = float3(1.0, -1.107, 1.704);
+
+    float YPrime = dot(color, kRGBToYPrime);
+    float I = dot(color, kRGBToI);
+    float Q = dot(color, kRGBToQ);
+    float hue = atan2(Q, I);
+    float chroma = sqrt(I * I + Q * Q);
+
+    hue += hueAdjust;
+
+    Q = chroma * sin(hue);
+    I = chroma * cos(hue);
+
+    float3 yIQ = float3(YPrime, I, Q);
+
+    return float3(dot(yIQ, kYIQToR), dot(yIQ, kYIQToG), dot(yIQ, kYIQToB));
+
+}
+
+
+
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
 	uint2 PixelId = DispatchThreadId + SceneColorViewport_ViewportMin;
@@ -78,7 +109,7 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 
 	float2 ProbeCenter = (ProbeRelativePosition + 0.5) * Spacing + SceneColorViewport_ViewportMin;
 
-    static const float BaseIntervalPixels = 4.0;
+    static const float BaseIntervalPixels = 2.0;
 
     float Scale = pow(float(BaseRayCount), float(Cascade));
     float IntervalLength = BaseIntervalPixels * Scale;
@@ -115,6 +146,8 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 		float AngleStep = Index + 0.5;
 		float Angle = ((2 * PI) / RayCount) * AngleStep;
 		float2 RayDirection = float2(cos(Angle), -sin(Angle));
+
+		//Project the pixel so we have a depth direction instead of just 2d
 		float2 DirPixel = ProbeCenter + RayDirection;
 		float2 DirUV = (DirPixel - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
 		float2 DirNDC = ViewportUVToScreenPos(DirUV);
@@ -123,7 +156,7 @@ uint BitsForSpan(float ThetaA, float ThetaB)
         float3 T = SliceRaw - ViewDir * dot(SliceRaw, ViewDir);
         float TLen = length(T);
         if (TLen < 1e-6)
-            continue; // degenerate slice
+            continue; // fully tangental to camera
         T /= TLen;
 
         float NTheta = SliceAngle(ProbeNormal, T, ViewDir);
@@ -133,8 +166,11 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 
         uint OcclusionBits = 0;
         float3 SliceRadiance = 0;
+
+       //Thickness of geometry, since we only have the surface depth.
         const float ThicknessWorld = 20.0;
-        const int MaxSteps = 16;
+
+        const int MaxSteps = 32;
         float T0 = max(IntervalStart, 1.0);
         float Span = IntervalEnd - T0;
         if (Span <= 0.0)
@@ -146,7 +182,6 @@ uint BitsForSpan(float ThetaA, float ThetaB)
         int NumSteps = (int) clamp(ceil(Span), 1.0, (float) MaxSteps);
         float StepPixels = Span / (float) NumSteps;
 
-[loop]
         for (int Step = 0; Step < NumSteps; Step++)
         {
             float t = T0 + (float(Step) + 0.5) * StepPixels;
@@ -155,32 +190,37 @@ uint BitsForSpan(float ThetaA, float ThetaB)
             if (any(SamplePixel < SceneColorViewport_ViewportMin) ||
         any(SamplePixel >= SceneColorViewport_ViewportMax))
             {
-                break; // leaving screen is a MISS -- do not touch OcclusionBits
+                break; // miss
             }
 
             float SampleDeviceZ = SceneDepth.Load(int3(int2(SamplePixel + View.ViewRectMin.xy), 0)).r;
             if (SampleDeviceZ <= 0.0)
-                continue; // sky (reversed-Z far plane): no occluder
+                continue; // Sky
 
             float SampleDepth = ConvertFromDeviceZ(SampleDeviceZ);
             float3 SampleViewPos = UnprojectPixel(SamplePixel, SampleDepth);
 
-            float3 AwayFromCamera = normalize(SampleViewPos);
+            float3 DirFromView = normalize(SampleViewPos);
             float3 DeltaFront = SampleViewPos - ProbeViewPos;
-            float3 DeltaBack = DeltaFront + AwayFromCamera * ThicknessWorld;
+            float3 DeltaBack = DeltaFront + DirFromView * ThicknessWorld;
 
             uint SectorMask = BitsForSpan(SliceAngle(DeltaFront, T, ViewDir),
                               SliceAngle(DeltaBack, T, ViewDir));
             SectorMask &= NormalMask;
 
+            
             uint NewBits = SectorMask & ~OcclusionBits;
             if (NewBits != 0)
             {
                 float2 SampleUV = (SamplePixel + View.ViewRectMin.xy) * View.BufferSizeAndInvSize.zw;
+
                 float3 Color = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, SampleUV, 0).rgb;
-                SliceRadiance += Color * ((float) countbits(NewBits) / NormalSectorCount);
+				//Only apply from non occluded direction slices
+            	SliceRadiance += Color * ((float) countbits(NewBits) / NormalSectorCount);
             }
             OcclusionBits |= SectorMask;
+            if ((OcclusionBits & NormalMask) == NormalMask)
+                break;
         }
 
         RadDelta.rgb = SliceRadiance;
@@ -200,6 +240,9 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 			float2 Offset = ((ProbeRelativePosition + 0.5) * (UpperSize / Size));
 			float4 UpperCascade = PreviousProbeCascade.SampleLevel(
 				GlobalBilinearClampedSampler, (UpperPosition + Offset + SceneColorViewport_ViewportMin) * SceneColorViewport_ExtentInverse, 0.0);
+
+
+
             RadDelta.rgb += RadDelta.a * UpperCascade.rgb;
             RadDelta.a *= UpperCascade.a;
         }
@@ -218,7 +261,7 @@ uint BitsForSpan(float ThetaA, float ThetaB)
 	// float2 HitBufferUV = ProbeCenter * SceneColorViewport_ViewportSizeInverse
 	//                + SceneColorViewport_UVViewportMin;
 	// float4 ColorSample = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, float2(HitBufferUV.xy), 0.0);
-	// ProbeCascades[uint3(PixelId, Cascade)] = ColorSample;
+    //ProbeCascade[PixelId] = float4(ProbeNormalWS, 1.0);
 
 	// ProbeCascades[uint3(PixelId, Cascade)] = float4(ProbeCenter * SceneColorViewport_ViewportSizeInverse,0.0,1.0);
 }
