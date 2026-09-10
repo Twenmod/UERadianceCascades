@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "IDirectoryWatcher.h"
 #include "Modules/ModuleManager.h"
 #include "Modules/ModuleInterface.h"
 #include "Interfaces/IPluginManager.h"
@@ -14,4 +15,12 @@ public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
+
+
+	//hot reload
+	void OnShaderDirChanged(const TArray<FFileChangeData>& Changes);
+
+	FDelegateHandle WatcherHandle;
+	FString WatchedShaderDir;
+	bool bRecompilePending = false;
 };

@@ -200,7 +200,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->OriginalSceneColor = SceneColor.Texture;
-
+		PassParameters->View = ViewInfo.ViewUniformBuffer;
+		PassParameters->SceneTextures = SceneTextureParams;
 		PassParameters->ProbeCascade = PreviousTexture;
 
 
