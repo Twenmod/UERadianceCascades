@@ -12,12 +12,10 @@
 // SceneColor texture
 Texture2D OriginalSceneColor;
 
-Texture2DArray<float4> ProbeCascades;
+Texture2D<float4> ProbeCascade;
 
 // SceneColor Viewport parameters
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
-
-uint DisplayCascade;
 
 // Output
 RWTexture2D<float4> Output;
@@ -36,8 +34,10 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     float2 sampleUV = (float2(SceneColorViewport_ViewportMin) + (DispatchThreadId + 0.5)) * SceneColorViewport_ExtentInverse;
     
     //Sample probe
-    float4 ProbeColor = ProbeCascades.SampleLevel(GlobalBilinearClampedSampler, float3(sampleUV, DisplayCascade), 0);
+    float4 ProbeColor = ProbeCascade.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
     //ProbeColor += ProbeCascades.SampleLevel(GlobalBilinearClampedSampler, float3((float2(SceneColorViewport_ViewportMin) + (DispatchThreadId + 0.5)) * SceneColorViewport_ExtentInverse * 0.5, 1), 0);
+
+    float4 SceneColor = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
 
     // Write output
     Output[SceneColorViewport_ViewportMin + DispatchThreadId] = ProbeColor;

@@ -33,7 +33,7 @@ public:
 
 	bool bInitialized = false;
 
-	TRefCountPtr<IPooledRenderTarget> ProbeCascadesTexArray;
+	TArray<TRefCountPtr<IPooledRenderTarget>> ProbeCascadeArray;
 
 	FInt32Point CurrentResolution;
 
@@ -52,10 +52,11 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, TraceViewport)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray<float4>, ProbeCascadesRead)
-		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2DArray<float4>, ProbeCascades)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousProbeCascade)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascade)
 		SHADER_PARAMETER(unsigned int, Cascade)
 		SHADER_PARAMETER(unsigned int, CascadeCount)
 		SHADER_PARAMETER(unsigned int, BaseRayCount)
@@ -93,9 +94,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray, ProbeCascades)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbeCascade)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
-		SHADER_PARAMETER(unsigned int, DisplayCascade)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization

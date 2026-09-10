@@ -28,6 +28,12 @@ namespace
 		0,
 		TEXT("Display a specific cascade \n"),
 		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarRayCount(
+		TEXT("r.RCRayCount"),
+		16,
+		TEXT("Raycount must be square i.e. 4, 16... \n"),
+		ECVF_RenderThreadSafe);
 }
 
 
@@ -71,15 +77,19 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		//Initialize Cascade textures
 			//Lower res
 		FIntPoint Resolution = SceneDesc.Extent;
-		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DArrayDesc(
+		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
 			Resolution,
 			PF_FloatRGBA,
 			FClearValueBinding::Black,
 			TexCreate_None,
 			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
-			false,
-			MAX_CASCADES);
-		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadesTexArray, TEXT("RC Cascades"));
+			false);
+		ProbeCascadeArray.SetNum(MAX_CASCADES);
+		for (int i = 0; i < MAX_CASCADES; ++i)
+		{
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadeArray[i], TEXT("RC Cascades"));
+		}
+
 		bInitialized = true;
 	}
 	// Accesspoint to our Shaders
@@ -91,7 +101,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
-	FRDGTextureRef HZBTexture = ViewInfo.ClosestHZB;
+	FRDGTextureRef HZBTexture = ViewInfo.HZB;
 	FVector2f HZBUvFactor(1.0f, 1.0f);
 
 
@@ -106,7 +116,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 	}
 	else
 	{
-		UE_LOG(LogTemp, Log, TEXT("HZB IS NOT THERE"));
+		UE_LOG(LogTemp, Warning, TEXT("HZB IS NOT THERE"));
 		HZBTexture = SystemTextures.Black;
 	}
 	UE_LOG(LogTemp, Log, TEXT("Extent %s | ViewportSize %s"),
@@ -127,19 +137,14 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			OutputDesc.ClearValue = FClearValueBinding(ClearColor);
 		}
 
-		FRDGTextureRef ProbeCascadeTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadesTexArray, ERDGTextureFlags::None);
 
-		auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
 		//TODO: correct size
 		FIntPoint MarchPassViewSize = SceneDesc.Extent;
-
-		//Clear probes
-		AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
 
 
 		//Marching pass Fills Probe
 
-		constexpr int BaseRayCount = 4;
+		int BaseRayCount = CVarRayCount->GetInt();
 
 		float Diagonal = sqrt(MarchPassViewSize.X * MarchPassViewSize.X + MarchPassViewSize.Y * MarchPassViewSize.Y);
 
@@ -147,21 +152,33 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
 		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
 		auto DepthTexture = ViewInfo.GetSceneTextures().Depth.Resolve;
+		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(), ERHIFeatureLevel::SM5);
 		FScreenPassTextureViewport TraceViewport(DepthTexture, ViewInfo.ViewRect);
-		for (int i = CascadeCount - 1; i >= 0; --i)
+		FRDGTextureRef PreviousTexture = SystemTextures.Black;
+		int Final = CVarDisplayCascade->GetInt();
+
+		for (int i = CascadeCount - 1; i >= Final; --i)
 		{
+
+			FRDGTextureRef ProbeCascadeTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadeArray[i], ERDGTextureFlags::None);
+
+			auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
+
+			//Clear probe
+			AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
 
 			FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
 			MarchParametersCascade->View = ViewInfo.ViewUniformBuffer;
-			MarchParametersCascade->ProbeCascades = ProbeUAV;
-			MarchParametersCascade->ProbeCascadesRead = ProbeCascadeTexture;
+			MarchParametersCascade->ProbeCascade = ProbeUAV;
+			MarchParametersCascade->PreviousProbeCascade = PreviousTexture;
 			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
 			MarchParametersCascade->SceneDepth = DepthTexture;
 			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 			MarchParametersCascade->BaseRayCount = BaseRayCount;
 			MarchParametersCascade->Cascade = i;
+			MarchParametersCascade->CascadeCount = CascadeCount;
 			MarchParametersCascade->TraceViewport = GetScreenPassTextureViewportParameters(TraceViewport);
-
+			MarchParametersCascade->SceneTextures = SceneTextureParams;
 			MarchParametersCascade->HZB = HZBTexture;
 			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
 
@@ -171,6 +188,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 				MarchShader,
 				MarchParametersCascade,
 				MarchGroupCount);
+
+			PreviousTexture = ProbeCascadeTexture;
 		}
 
 		// Create target texture
@@ -181,11 +200,12 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->OriginalSceneColor = SceneColor.Texture;
-		PassParameters->ProbeCascades = ProbeCascadeTexture;
+
+		PassParameters->ProbeCascade = PreviousTexture;
+
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-		PassParameters->DisplayCascade = CVarDisplayCascade->GetInt();
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 
