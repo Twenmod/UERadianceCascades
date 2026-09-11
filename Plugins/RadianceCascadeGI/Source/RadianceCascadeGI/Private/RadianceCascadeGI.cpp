@@ -1,9 +1,9 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RadianceCascadeGI.h"
-
+#if WITH_EDITOR
 #include "DirectoryWatcherModule.h"
-
+#endif
 #define LOCTEXT_NAMESPACE "FRadianceCascadeGIModule"
 
 void FRadianceCascadeGIModule::StartupModule()
@@ -56,6 +56,7 @@ void FRadianceCascadeGIModule::ShutdownModule()
 }
 
 //Temp todo:remove
+#if WITH_EDITOR
 void FRadianceCascadeGIModule::OnShaderDirChanged(const TArray<FFileChangeData>& Changes)
 {
 	const bool bShaderTouched = Changes.ContainsByPredicate([](const FFileChangeData& C)
@@ -76,7 +77,7 @@ void FRadianceCascadeGIModule::OnShaderDirChanged(const TArray<FFileChangeData>&
 			return false;
 		}), 0.5f);
 }
-
+#endif
 #undef LOCTEXT_NAMESPACE
 
 IMPLEMENT_MODULE(FRadianceCascadeGIModule, RadianceCascadeGI)

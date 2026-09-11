@@ -1,0 +1,2 @@
+/Content/TEST/Models/NewSponza_Main_glTF_003/Textures/arch_stone_wall_01_Normal_png.uasset filter=lfs diff=lfs merge=lfs -text
+/Content/TEST/Models/NewSponza_Main_glTF_003/Textures/stone_01_tile_Normal_png.uasset filter=lfs diff=lfs merge=lfs -text

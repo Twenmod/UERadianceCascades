@@ -36,8 +36,10 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     
     //Sample probe
     float4 ProbeColor = ProbeCascade.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
-    FGBufferData GBuffer = GetGBufferData(sampleUV);
+
+	FGBufferData GBuffer = GetGBufferData(sampleUV);
+    float4 SceneColor = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
 
     // Write output, apply as lighting multiplying by diffuse
-    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeColor.rgb * GBuffer.DiffuseColor,1.0);
+    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeColor.rgb * GBuffer.DiffuseColor,1.0);
 }

@@ -1,7 +1,3 @@
-// Custom SceneViewExtension Template for Unreal Engine
-// Copyright 2023 - 2025 Ossi Luoto
-// 
-// Custom SceneViewExtension implementation
 
 #include "ScreenSpaceRCSceneExtension.h"
 
@@ -119,8 +115,6 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		UE_LOG(LogTemp, Warning, TEXT("HZB IS NOT THERE"));
 		HZBTexture = SystemTextures.Black;
 	}
-	UE_LOG(LogTemp, Log, TEXT("Extent %s | ViewportSize %s"),
-		*SceneColor.Texture->Desc.Extent.ToString(), *SceneColor.ViewRect.Size().ToString());
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
 

@@ -1,8 +1,3 @@
-// Custom SceneViewExtension Template for Unreal Engine
-// Copyright 2023 - 2025 Ossi Luoto
-// 
-// Custom SceneViewExtension implementation
-
 #pragma once
 
 #include "CoreMinimal.h"
