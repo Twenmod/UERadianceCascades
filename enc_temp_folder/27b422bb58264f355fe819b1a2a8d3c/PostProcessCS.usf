@@ -42,8 +42,4 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 
     // Write output, apply as lighting multiplying by diffuse
     Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeColor.rgb * GBuffer.DiffuseColor,1.0);
-
-    //Just debug light
-    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeColor.rgb,1.0);
-
 }
