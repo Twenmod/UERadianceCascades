@@ -1,6 +1,7 @@
 
 #include "ScreenSpaceRCSceneExtension.h"
 
+#include "IContentBrowserSingleton.h"
 #include "RenderTargetPool.h"
 #include "SceneRendering.h"
 #include "SceneTextureParameters.h"
@@ -27,8 +28,20 @@ namespace
 
 	TAutoConsoleVariable<int32> CVarRayCount(
 		TEXT("r.RCRayCount"),
-		16,
+		4,
 		TEXT("Raycount must be square i.e. 4, 16... \n"),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarIntervalMult(
+		TEXT("r.RCIntervalMult"),
+		1,
+		TEXT("Multiply intervals to debug \n"),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarTileSize(
+		TEXT("r.RCTileSize"),
+		4,
+		TEXT("Size of Cascade 0 tiles. i.e. base resolution \n"),
 		ECVF_RenderThreadSafe);
 }
 
@@ -65,14 +78,16 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 	auto SceneDesc = SceneColor.Texture->Desc;
 
+	uint32 TileSize = static_cast<uint32>(CVarTileSize->GetInt());
+
 	//Initialize resources if not there
-	if (!bInitialized || CurrentResolution != SceneDesc.Extent)
+	if (!bInitialized || CurrentResolution != SceneDesc.Extent / TileSize)
 	{
-		CurrentResolution = SceneDesc.Extent;
+		CurrentResolution = SceneDesc.Extent / TileSize;
 
 		//Initialize Cascade textures
 			//Lower res
-		FIntPoint Resolution = SceneDesc.Extent;
+		FIntPoint Resolution = CurrentResolution;
 		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
 			Resolution,
 			PF_FloatRGBA,
@@ -132,8 +147,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		}
 
 
-		//TODO: correct size
-		FIntPoint MarchPassViewSize = SceneDesc.Extent;
+		FIntPoint MarchPassViewSize = SceneDesc.Extent / TileSize;
 
 
 		//Marching pass Fills Probe
@@ -153,7 +167,6 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		for (int i = CascadeCount - 1; i >= Final; --i)
 		{
-
 			FRDGTextureRef ProbeCascadeTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadeArray[i], ERDGTextureFlags::None);
 
 			auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
@@ -175,6 +188,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->SceneTextures = SceneTextureParams;
 			MarchParametersCascade->HZB = HZBTexture;
 			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
+			MarchParametersCascade->IntervalMult = CVarIntervalMult->GetFloat();
+			MarchParametersCascade->TileSize = TileSize;
 
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,

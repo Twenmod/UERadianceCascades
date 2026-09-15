@@ -52,11 +52,13 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousProbeCascade)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascade)
-		SHADER_PARAMETER(unsigned int, Cascade)
-		SHADER_PARAMETER(unsigned int, CascadeCount)
-		SHADER_PARAMETER(unsigned int, BaseRayCount)
+		SHADER_PARAMETER(uint32, Cascade)
+		SHADER_PARAMETER(uint32, CascadeCount)
+		SHADER_PARAMETER(uint32, BaseRayCount)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HZB)
 		SHADER_PARAMETER(FVector4f, HZBUvFactorAndInv)
+		SHADER_PARAMETER(float, IntervalMult)
+		SHADER_PARAMETER(uint32, TileSize)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
