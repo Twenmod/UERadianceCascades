@@ -65,6 +65,30 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 	return DenomSq < 1e-10 ? Fallback : saturate(dot(Point - LineStart, Line) / DenomSq);
 }
 
+float3 UVToTranslatedWorld(float2 UV)
+{
+    float DeviceZ = SceneDepth.SampleLevel(
+                          GlobalBilinearClampedSampler, UV, 0).r;
+    float SceneDepth = ConvertFromDeviceZ(DeviceZ);
+    float2 ScreenPos = ViewportUVToScreenPos(UV);
+    return mul(float4(ScreenPos * SceneDepth, SceneDepth, 1), View.ScreenToTranslatedWorld).xyz;
+}
+
+float3 ReconstructGeoNormal(float2 UV, float2 Offset)
+{
+    float3 C = UVToTranslatedWorld(UV);
+    float3 L = UVToTranslatedWorld(UV - float2(Offset.x, 0));
+    float3 R = UVToTranslatedWorld(UV + float2(Offset.x, 0));
+    float3 D = UVToTranslatedWorld(UV - float2(0, Offset.y));
+    float3 U = UVToTranslatedWorld(UV + float2(0, Offset.y));
+
+    float3 Hor = (abs(L.z - C.z) < abs(R.z - C.z)) ? (C - L) : (R - C);
+    float3 Ver = (abs(D.z - C.z) < abs(U.z - C.z)) ? (C - D) : (U - C);
+
+    float3 N = normalize(cross(Ver, Hor));
+    return (dot(N, normalize(-C)) < 0) ? -N : N;
+}
+
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
 	float InvTileSize = 1.0 / float(TileSize);
@@ -82,8 +106,8 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
     float2 CascadeViewportSizeInverse = 1.0/CascadeViewportSize;
 
 	uint RayCount = pow(BaseRayCount, 1 + Cascade);
-	uint SqrtBase = sqrt(float(BaseRayCount));
-	uint Spacing = pow(SqrtBase, Cascade);
+	float SqrtBase = sqrt(float(BaseRayCount));
+	float Spacing = pow(SqrtBase, Cascade);
 	uint2 Size = floor(CascadeViewportSize / Spacing);
 
 	// Current probe
@@ -92,7 +116,7 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 	// Base index of the rays for knowing which angle to start
 	float BaseIndex = float(BaseRayCount) * (RayPos.x + (Spacing * RayPos.y));
 
-	float2 ProbeCenter = (floor((ProbeRelativePosition + 0.5) * Spacing) + 0.5) * TileSize + SceneColorViewport_ViewportMin;
+	float2 ProbeCenter = (((ProbeRelativePosition + 0.5) * Spacing) + 0.5) * TileSize + SceneColorViewport_ViewportMin;
 	float BaseIntervalPixels = 2.0 * TileSize;
 
 	float Scale = pow(float(BaseRayCount), float(Cascade)) * IntervalMult;
@@ -111,8 +135,7 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 	float2 ProbeNDC = ViewportUVToScreenPos(ProbeUV);
 	float3 ProbeViewPos = float3(ProbeNDC * ProbeDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
 
-	FGBufferData GBuffer = GetGBufferData(ProbeBufferUV);
-	float3 ProbeNormalWS = GBuffer.WorldNormal;
+	float3 ProbeNormalWS = ReconstructGeoNormal(ProbeBufferUV, float2(SceneColorViewport_ViewportSizeInverse));
 	float3 ProbeNormal = mul(ProbeNormalWS, (float3x3)View.TranslatedWorldToView);
 	float3 ViewDir = normalize(-ProbeViewPos);
 
@@ -139,7 +162,7 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 	float3 UpperViewPos[4];
 	[unroll] for (int c = 0; c < 4; c++)
 	{
-		float2 ScreenPixel = (floor(((float2)MaxPos[c] + 0.5) * UpperSpacing) + 0.5) * TileSize + SceneColorViewport_ViewportMin;
+		float2 ScreenPixel = ((((float2)MaxPos[c] + 0.5) * UpperSpacing) + 0.5) * TileSize + SceneColorViewport_ViewportMin;
 		float DeviceZ = SceneDepth.Load(int3((int2)ScreenPixel + (int2)View.ViewRectMin.xy, 0)).r;
 		float LinearZ = ConvertFromDeviceZ(DeviceZ);
 		UpperViewPos[c] = UnprojectPixel(ScreenPixel, LinearZ);
@@ -180,7 +203,9 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 			continue;  // fully tangental to camera
 		T /= TLen;
 
+
 		float NTheta = SliceAngle(ProbeNormal, T, ViewDir);
+
 		uint NormalMask = BitsForSpan(NTheta - PI * 0.5, NTheta + PI * 0.5);
 		float NormalSectorCount = max(1.0, (float)countbits(NormalMask));
 		float4 RadDelta = float4(0.0, 0.0, 0.0, 1.0);
@@ -214,12 +239,13 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 			}
 
 			float SampleDeviceZ = SceneDepth.Load(int3(int2(SamplePixel + View.ViewRectMin.xy), 0)).r;
-			if (SampleDeviceZ <= 0.0)
+			if (SampleDeviceZ <= 0.00)
 				continue;  // Sky
 
 			float SampleDepth = ConvertFromDeviceZ(SampleDeviceZ);
 
 			float3 SampleViewPos = UnprojectPixel(SamplePixel, SampleDepth);
+
 
 			float3 DirFromView = normalize(SampleViewPos);
 			float3 DeltaFront = SampleViewPos - ProbeViewPos;
@@ -238,11 +264,11 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 				SliceRadiance += Color * ((float)countbits(NewBits) / NormalSectorCount);
 			}
 			OcclusionBits |= SectorMask;
+
 			if ((OcclusionBits & NormalMask) == NormalMask)
 				break;
+
 		}
-		// ProbeCascade[uint2(PixelId)] = ((float) countbits(OcclusionBits));
-		// return;
 
 		RadDelta.rgb = SliceRadiance;
 		RadDelta.a = 1.0 - (float)countbits(OcclusionBits) / NormalSectorCount;
