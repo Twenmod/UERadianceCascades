@@ -106,13 +106,12 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewFamily.GetFeatureLevel());
 
-
 	check(SceneView.bIsViewInfo);
 	const FViewInfo& ViewInfo = static_cast<const FViewInfo&>(SceneView);
 
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
-	FRDGTextureRef HZBTexture = ViewInfo.HZB;
+	FRDGTextureRef HZBTexture = ViewInfo.ClosestHZB;
 	FVector2f HZBUvFactor(1.0f, 1.0f);
 
 

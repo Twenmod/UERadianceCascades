@@ -104,8 +104,13 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 
 	float2 ProbeBufferUV = (ProbeCenter - SceneColorViewport_ViewportMin + View.ViewRectMin.xy) * View.BufferSizeAndInvSize.zw;
 	int2 ProbePixel = (int2)floor(ProbeCenter) + (int2)View.ViewRectMin.xy;
-	float ProbeDeviceZ = SceneDepth.Load(int3(ProbePixel, 0)).r;
-	float ProbeDepth = ConvertFromDeviceZ(ProbeDeviceZ);
+    int Mip = Cascade;
+    float ProbeDeviceZ = HZB.SampleLevel(GlobalPointClampedSampler, int2(ProbePixel + SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse * HZBUvFactorAndInv.xy, Mip).r;
+    float ProbeDepth = ConvertFromDeviceZ(ProbeDeviceZ);
+
+    ProbeCascade[uint2(PixelId)] = ProbeDepth*0.01;
+    return;
+
 
 	float2 ProbeUV = (ProbeCenter - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
 	float2 ProbeNDC = ViewportUVToScreenPos(ProbeUV);
@@ -212,8 +217,9 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 			{
 				break;	// miss
 			}
+            int Mip = round(log2(StepPixels));
+            float SampleDeviceZ = HZB.SampleLevel(GlobalPointClampedSampler, int2(SamplePixel + SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse * HZBUvFactorAndInv.xy, Mip).r;
 
-			float SampleDeviceZ = SceneDepth.Load(int3(int2(SamplePixel + View.ViewRectMin.xy), 0)).r;
 			if (SampleDeviceZ <= 0.0)
 				continue;  // Sky
 
