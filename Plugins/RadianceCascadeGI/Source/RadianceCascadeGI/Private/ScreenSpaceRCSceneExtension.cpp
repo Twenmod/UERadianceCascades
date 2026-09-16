@@ -38,10 +38,22 @@ namespace
 		TEXT("Multiply intervals to debug \n"),
 		ECVF_RenderThreadSafe);
 
+
+
 	TAutoConsoleVariable<int32> CVarTileSize(
 		TEXT("r.RCTileSize"),
 		4,
 		TEXT("Size of Cascade 0 tiles. i.e. base resolution \n"),
+		ECVF_RenderThreadSafe);
+	TAutoConsoleVariable<float> CVarWallThickness(
+		TEXT("r.RCTWallThickness"),
+		300,
+		TEXT("Assumed depth of visible walls\n"),
+		ECVF_RenderThreadSafe);
+	TAutoConsoleVariable<float> CVarIntensity(
+		TEXT("r.RCIntensity"),
+		1,
+		TEXT("Multiplier of GI\n"),
 		ECVF_RenderThreadSafe);
 }
 
@@ -84,34 +96,68 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 	if (!bInitialized || CurrentResolution != SceneDesc.Extent / TileSize)
 	{
 		CurrentResolution = SceneDesc.Extent / TileSize;
-
-		//Initialize Cascade textures
-			//Lower res
-		FIntPoint Resolution = CurrentResolution;
-		FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
-			Resolution,
-			PF_FloatRGBA,
-			FClearValueBinding::Black,
-			TexCreate_None,
-			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
-			false);
-		FPooledRenderTargetDesc MaskDesc = FPooledRenderTargetDesc::Create2DDesc(
-			Resolution,
-			PF_R32_UINT,
-			FClearValueBinding::Black,
-			TexCreate_None,
-			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
-			false);
-		ProbeCascadeArray.SetNum(MAX_CASCADES);
-		ProbeCascadeSliceMasks.SetNum(MAX_CASCADES);
-		for (int i = 0; i < MAX_CASCADES; ++i)
+		RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC Initialization");
 		{
-			//Probe color ray data
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadeArray[i], TEXT("RC Cascades"));
-			//Probe Depth slice Occlusion bits
-			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, MaskDesc, ProbeCascadeSliceMasks[i], TEXT("RC Cascades Slice Mask"));
-		}
+			//Initialize Cascade textures
+				//Lower res
+			FIntPoint Resolution = CurrentResolution;
+			FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
+				Resolution,
+				PF_FloatRGBA,
+				FClearValueBinding::Black,
+				TexCreate_None,
+				TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
+				false);
+			FPooledRenderTargetDesc MaskDesc = FPooledRenderTargetDesc::Create2DDesc(
+				Resolution,
+				PF_R32_UINT,
+				FClearValueBinding::Black,
+				TexCreate_None,
+				TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
+				false);
+			ProbeCascadeArray.SetNum(MAX_CASCADES);
+			ProbeCascadeSliceMasks.SetNum(MAX_CASCADES);
+			for (int i = 0; i < MAX_CASCADES; ++i)
+			{
+				//Probe color ray data
+				GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadeArray[i], TEXT("RC Cascades"));
+				//Probe Depth slice Occlusion bits
+				GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, MaskDesc, ProbeCascadeSliceMasks[i], TEXT("RC Cascades Slice Mask"));
+			}
 
+			//Lut buffer
+			static TArray<float> LutData;
+			LutData.SetNumZeroed(1024);
+			for (uint32 Slice = 0; Slice < 4; ++Slice)
+			{
+				for (uint32 Byte = 0; Byte < 256; ++Byte)
+				{
+					float W = 0.0f;
+					for (uint32 Bit = 0; Bit < 8; ++Bit)
+					{
+						if (Byte & (1u << Bit))
+						{
+							const uint32 j = Slice * 8 + Bit;
+							W += FMath::Sin((float(j) + 0.5f) * (UE_PI / 32.0f));
+						}
+					}
+					LutData[Slice * 256 + Byte] = W;
+				}
+			}
+
+			const FRDGBufferDesc LutDesc =
+				FRDGBufferDesc::CreateBufferDesc(sizeof(float), LutData.Num());
+
+			BitWeightLUTBuffer = AllocatePooledBuffer(LutDesc, TEXT("RC BitWeightLUT"));
+
+
+			FRDGBufferRef LutRDG = GraphBuilder.RegisterExternalBuffer(BitWeightLUTBuffer);
+			GraphBuilder.QueueBufferUpload(
+				LutRDG,
+				LutData.GetData(),
+				LutData.Num() * sizeof(float),
+				ERDGInitialDataFlags::NoCopy);
+		}
 		bInitialized = true;
 	}
 	// Accesspoint to our Shaders
@@ -162,6 +208,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		//Marching pass Fills Probe
 
+		FRDGBufferRef BitWeightLut = GraphBuilder.RegisterExternalBuffer(BitWeightLUTBuffer);
+		auto BitWeightLUTSRV = GraphBuilder.CreateSRV(BitWeightLut, PF_R32_FLOAT);
 		int BaseRayCount = CVarRayCount->GetInt();
 
 		float Diagonal = sqrt(MarchPassViewSize.X * MarchPassViewSize.X + MarchPassViewSize.Y * MarchPassViewSize.Y);
@@ -206,6 +254,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
 			MarchParametersCascade->IntervalMult = CVarIntervalMult->GetFloat();
 			MarchParametersCascade->TileSize = TileSize;
+			MarchParametersCascade->WallThickness = CVarWallThickness->GetFloat();
+			MarchParametersCascade->BitWeightLUT = BitWeightLUTSRV;
 
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
@@ -229,6 +279,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		PassParameters->View = ViewInfo.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTextureParams;
 		PassParameters->ProbeCascade = PreviousTexture;
+		PassParameters->Intensity = CVarIntensity->GetFloat();
 
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves

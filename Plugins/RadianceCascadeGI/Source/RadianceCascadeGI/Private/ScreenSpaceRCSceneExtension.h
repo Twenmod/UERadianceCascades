@@ -30,6 +30,7 @@ public:
 
 	TArray<TRefCountPtr<IPooledRenderTarget>> ProbeCascadeArray;
 	TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
+	TRefCountPtr<FRDGPooledBuffer> BitWeightLUTBuffer;
 
 	FInt32Point CurrentResolution;
 
@@ -55,6 +56,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousProbeCascadeMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascade)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascadeMask)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(Buffer<float>, BitWeightLUT)
 		SHADER_PARAMETER(uint32, Cascade)
 		SHADER_PARAMETER(uint32, CascadeCount)
 		SHADER_PARAMETER(uint32, BaseRayCount)
@@ -62,6 +64,7 @@ public:
 		SHADER_PARAMETER(FVector4f, HZBUvFactorAndInv)
 		SHADER_PARAMETER(float, IntervalMult)
 		SHADER_PARAMETER(uint32, TileSize)
+		SHADER_PARAMETER(float, WallThickness)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -98,6 +101,7 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbeCascade)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER(float, Intensity)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization

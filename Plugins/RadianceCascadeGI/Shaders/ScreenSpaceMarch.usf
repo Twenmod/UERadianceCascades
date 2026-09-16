@@ -20,6 +20,8 @@ Texture2D<uint> PreviousProbeCascadeMask;
 RWTexture2D<float4> ProbeCascade;
 RWTexture2D<uint> ProbeCascadeMask;
 
+
+
 Texture2D HZB;
 float4 HZBUvFactorAndInv;
 
@@ -31,21 +33,17 @@ uint BaseRayCount;
 
 float IntervalMult;
 uint TileSize;
+float WallThickness;
 
-float BinSolidAngle(uint j)
-{
-	return sin((float(j) + 0.5) * (PI / 32.0));
-}
+Buffer<float> BitWeightLUT;
 
 float WeightedBitSum(uint Bits)
 {
-	float W = 0.0;
-	while (Bits)
-	{
-		W += BinSolidAngle(firstbitlow(Bits));
-		Bits &= Bits - 1u;
-	}
-	return W;
+    return BitWeightLUT[(Bits) & 0xFF]
+         + BitWeightLUT[((Bits >> 8) & 0xFF) + 256]
+         + BitWeightLUT[((Bits >> 16) & 0xFF) + 512]
+         + BitWeightLUT[((Bits >> 24) & 0xFF) + 768];
+
 }
 
 // WeightedBitSum(0xFFFFFFFFu) == 1 / sin(PI/64)
@@ -84,29 +82,6 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 	float3 Line = LineEnd - LineStart;
 	float DenomSq = dot(Line, Line);
 	return DenomSq < 1e-10 ? Fallback : saturate(dot(Point - LineStart, Line) / DenomSq);
-}
-
-float3 UVToTranslatedWorld(float2 UV)
-{
-	float DeviceZ = SceneDepth.SampleLevel(GlobalBilinearClampedSampler, UV, 0).r;
-	float SceneDepth = ConvertFromDeviceZ(DeviceZ);
-	float2 ScreenPos = ViewportUVToScreenPos(UV);
-	return mul(float4(ScreenPos * SceneDepth, SceneDepth, 1), View.ScreenToTranslatedWorld).xyz;
-}
-
-float3 ReconstructGeoNormal(float2 UV, float2 Offset)
-{
-	float3 C = UVToTranslatedWorld(UV);
-	float3 L = UVToTranslatedWorld(UV - float2(Offset.x, 0));
-	float3 R = UVToTranslatedWorld(UV + float2(Offset.x, 0));
-	float3 D = UVToTranslatedWorld(UV - float2(0, Offset.y));
-	float3 U = UVToTranslatedWorld(UV + float2(0, Offset.y));
-
-	float3 Hor = (abs(L.z - C.z) < abs(R.z - C.z)) ? (C - L) : (R - C);
-	float3 Ver = (abs(D.z - C.z) < abs(U.z - C.z)) ? (C - D) : (U - C);
-
-	float3 N = normalize(cross(Ver, Hor));
-	return (dot(N, normalize(-C)) < 0) ? -N : N;
 }
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
@@ -154,8 +129,8 @@ float3 ReconstructGeoNormal(float2 UV, float2 Offset)
 	float2 ProbeUV = (ProbeCenter - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
 	float2 ProbeNDC = ViewportUVToScreenPos(ProbeUV);
 	float3 ProbeViewPos = float3(ProbeNDC * ProbeDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
-
-	float3 ProbeNormalWS = ReconstructGeoNormal(ProbeBufferUV, float2(SceneColorViewport_ViewportSizeInverse));
+    FGBufferData GBuffer = GetGBufferData(ProbeBufferUV);
+	float3 ProbeNormalWS = GBuffer.WorldNormal;
 	float3 ProbeNormal = mul(ProbeNormalWS, (float3x3)View.TranslatedWorldToView);
 	float3 ViewDir = normalize(-ProbeViewPos);
 
@@ -231,9 +206,8 @@ float3 ReconstructGeoNormal(float2 UV, float2 Offset)
 		float3 SliceRadiance = 0;
 
 		// Thickness of geometry, since we only have the surface depth.
-		const float ThicknessWorld = 300.0;
 
-		const int MaxSteps = 16;
+		const int MaxSteps = 8;
 		float T0 = max(IntervalStart, 1.0);
 		float Span = (IntervalEnd)-T0;
 
@@ -270,7 +244,7 @@ float3 ReconstructGeoNormal(float2 UV, float2 Offset)
 				continue;
 
 			float3 DirFromView = normalize(SampleViewPos);
-			float3 DeltaBack = DeltaFront + DirFromView * ThicknessWorld;
+			float3 DeltaBack = DeltaFront + DirFromView * WallThickness;
 
 			// Mask based on the occluding slice we assume based on the sampled position
 			uint SectorMask = BitsForSpan(SliceAngle(DeltaFront, T, ViewDir), SliceAngle(DeltaBack, T, ViewDir));

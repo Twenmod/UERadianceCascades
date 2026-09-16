@@ -21,6 +21,8 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 // Output
 RWTexture2D<float4> Output;
 
+float Intensity;
+
 // Compute Shader code
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
 void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
@@ -41,7 +43,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     float4 SceneColor = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
 
     // Write output, apply as lighting multiplying by diffuse
-    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeColor.rgb*PI * GBuffer.DiffuseColor,1.0);
+    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeColor.rgb*PI * Intensity * GBuffer.DiffuseColor,1.0);
 
     //Just debug light
     //Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeColor.rgb,1.0);
