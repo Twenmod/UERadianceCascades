@@ -29,6 +29,7 @@ public:
 	bool bInitialized = false;
 
 	TArray<TRefCountPtr<IPooledRenderTarget>> ProbeCascadeArray;
+	TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
 
 	FInt32Point CurrentResolution;
 
@@ -51,7 +52,9 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousProbeCascade)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PreviousProbeCascadeMask)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascade)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, ProbeCascadeMask)
 		SHADER_PARAMETER(uint32, Cascade)
 		SHADER_PARAMETER(uint32, CascadeCount)
 		SHADER_PARAMETER(uint32, BaseRayCount)

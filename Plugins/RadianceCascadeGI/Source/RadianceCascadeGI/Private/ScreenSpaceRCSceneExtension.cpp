@@ -95,10 +95,21 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			TexCreate_None,
 			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
 			false);
+		FPooledRenderTargetDesc MaskDesc = FPooledRenderTargetDesc::Create2DDesc(
+			Resolution,
+			PF_R32_UINT,
+			FClearValueBinding::Black,
+			TexCreate_None,
+			TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable,
+			false);
 		ProbeCascadeArray.SetNum(MAX_CASCADES);
+		ProbeCascadeSliceMasks.SetNum(MAX_CASCADES);
 		for (int i = 0; i < MAX_CASCADES; ++i)
 		{
+			//Probe color ray data
 			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, Desc, ProbeCascadeArray[i], TEXT("RC Cascades"));
+			//Probe Depth slice Occlusion bits
+			GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, MaskDesc, ProbeCascadeSliceMasks[i], TEXT("RC Cascades Slice Mask"));
 		}
 
 		bInitialized = true;
@@ -162,21 +173,27 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(), ERHIFeatureLevel::SM5);
 		FScreenPassTextureViewport TraceViewport(DepthTexture, ViewInfo.ViewRect);
 		FRDGTextureRef PreviousTexture = SystemTextures.Black;
+		FRDGTextureRef PreviousMaskTexture = SystemTextures.Black;
 		int Final = CVarDisplayCascade->GetInt();
 
 		for (int i = CascadeCount - 1; i >= Final; --i)
 		{
 			FRDGTextureRef ProbeCascadeTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadeArray[i], ERDGTextureFlags::None);
+			FRDGTextureRef ProbeCascadeMaskTexture = GraphBuilder.RegisterExternalTexture(ProbeCascadeSliceMasks[i], ERDGTextureFlags::None);
 
 			auto ProbeUAV = GraphBuilder.CreateUAV(ProbeCascadeTexture);
+			auto ProbeMaskUAV = GraphBuilder.CreateUAV(ProbeCascadeMaskTexture);
 
 			//Clear probe
 			AddClearRenderTargetPass(GraphBuilder, ProbeCascadeTexture);
+			AddClearRenderTargetPass(GraphBuilder, ProbeCascadeMaskTexture);
 
 			FScreenSpaceRCMarchShader::FParameters* MarchParametersCascade = GraphBuilder.AllocParameters<FScreenSpaceRCMarchShader::FParameters>();
 			MarchParametersCascade->View = ViewInfo.ViewUniformBuffer;
 			MarchParametersCascade->ProbeCascade = ProbeUAV;
 			MarchParametersCascade->PreviousProbeCascade = PreviousTexture;
+			MarchParametersCascade->ProbeCascadeMask = ProbeMaskUAV;
+			MarchParametersCascade->PreviousProbeCascadeMask = PreviousMaskTexture;
 			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
 			MarchParametersCascade->SceneDepth = DepthTexture;
 			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
@@ -198,6 +215,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 				MarchGroupCount);
 
 			PreviousTexture = ProbeCascadeTexture;
+			PreviousMaskTexture = ProbeCascadeMaskTexture;
 		}
 
 		// Create target texture
