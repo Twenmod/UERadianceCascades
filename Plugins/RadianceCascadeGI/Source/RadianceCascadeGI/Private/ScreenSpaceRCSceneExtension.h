@@ -5,6 +5,7 @@
 #include "SceneViewExtension.h"
 #include "PostProcess/PostProcessMaterial.h"
 #include "DataDrivenShaderPlatformInfo.h"
+#include "BlueNoise.h"
 
 static constexpr int MAX_CASCADES = 32;
 
@@ -49,6 +50,7 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, TraceViewport)
+		SHADER_PARAMETER_STRUCT_REF(FBlueNoise, BlueNoise)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
@@ -60,7 +62,8 @@ public:
 		SHADER_PARAMETER(uint32, Cascade)
 		SHADER_PARAMETER(uint32, CascadeCount)
 		SHADER_PARAMETER(uint32, BaseRayCount)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, HZB)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, ClosestHZB)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, FurthestHZB)
 		SHADER_PARAMETER(FVector4f, HZBUvFactorAndInv)
 		SHADER_PARAMETER(float, IntervalMult)
 		SHADER_PARAMETER(uint32, TileSize)
@@ -101,6 +104,8 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, ProbeCascade)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneDepth)
+		SHADER_PARAMETER(uint32, TileSize)
 		SHADER_PARAMETER(float, Intensity)
 	END_SHADER_PARAMETER_STRUCT()
 

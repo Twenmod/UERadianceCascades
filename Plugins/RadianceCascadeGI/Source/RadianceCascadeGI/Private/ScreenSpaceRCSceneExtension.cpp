@@ -144,7 +144,6 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 					LutData[Slice * 256 + Byte] = W;
 				}
 			}
-
 			const FRDGBufferDesc LutDesc =
 				FRDGBufferDesc::CreateBufferDesc(sizeof(float), LutData.Num());
 
@@ -168,24 +167,6 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
-	FRDGTextureRef HZBTexture = ViewInfo.ClosestHZB;
-	FVector2f HZBUvFactor(1.0f, 1.0f);
-
-
-	if (HZBTexture)
-	{
-		const FIntPoint HZBExtent = HZBTexture->Desc.Extent;
-		const FIntPoint HZBSourceRect = ViewInfo.ViewRect.Size();
-		HZBUvFactor = FVector2f(
-			static_cast<float>(HZBSourceRect.X) / static_cast<float>(2 * HZBExtent.X),
-			static_cast<float>(HZBSourceRect.Y) / static_cast<float>(2 * HZBExtent.Y));
-
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("HZB IS NOT THERE"));
-		HZBTexture = SystemTextures.Black;
-	}
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
 
@@ -250,13 +231,13 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->CascadeCount = CascadeCount;
 			MarchParametersCascade->TraceViewport = GetScreenPassTextureViewportParameters(TraceViewport);
 			MarchParametersCascade->SceneTextures = SceneTextureParams;
-			MarchParametersCascade->HZB = HZBTexture;
-			MarchParametersCascade->HZBUvFactorAndInv = FVector4f(HZBUvFactor, FVector2f(1.f) / HZBUvFactor);
 			MarchParametersCascade->IntervalMult = CVarIntervalMult->GetFloat();
 			MarchParametersCascade->TileSize = TileSize;
 			MarchParametersCascade->WallThickness = CVarWallThickness->GetFloat();
 			MarchParametersCascade->BitWeightLUT = BitWeightLUTSRV;
-
+			MarchParametersCascade->BlueNoise = CreateUniformBufferImmediate(
+				GetBlueNoiseGlobalParameters(),
+				EUniformBufferUsage::UniformBuffer_SingleFrame);
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("Screen Space RC Pass Cascade %d", i),
@@ -279,6 +260,8 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		PassParameters->View = ViewInfo.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTextureParams;
 		PassParameters->ProbeCascade = PreviousTexture;
+		PassParameters->SceneDepth = DepthTexture;
+		PassParameters->TileSize = TileSize;
 		PassParameters->Intensity = CVarIntensity->GetFloat();
 
 

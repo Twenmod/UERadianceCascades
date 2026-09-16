@@ -1,0 +1,113 @@
+// Custom SceneViewExtension Template for Unreal Engine
+// Copyright 2023 - 2025 Ossi Luoto
+// 
+// Custom CS PostProcessing Shader
+
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+
+// Shader parameters
+
+// SceneColor texture
+Texture2D OriginalSceneColor;
+
+Texture2D<float4> ProbeCascade;
+
+Texture2D SceneDepth;
+uint TileSize;
+
+// SceneColor Viewport parameters
+SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
+
+// Output
+RWTexture2D<float4> Output;
+
+float Intensity;
+
+// Compute Shader code
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
+{
+	// Check that we are in scope
+    if (any(DispatchThreadId >= SceneColorViewport_ViewportMax))
+    {
+        return;
+    }
+	
+    // Calculate SampleUV with viewport parameters
+    float2 sampleUV = (float2(SceneColorViewport_ViewportMin) + (DispatchThreadId + 0.5)) * SceneColorViewport_ExtentInverse;
+    
+    //Sample probe
+    FGBufferData GBuffer = GetGBufferData(sampleUV);
+
+
+    float PixelDeviceZ = SceneDepth.Load(int3(DispatchThreadId + (uint2) View.ViewRectMin.xy, 0)).r;
+    float PixelDepth = ConvertFromDeviceZ(PixelDeviceZ);
+    float3 PixelNormal = mul(GBuffer.WorldNormal, (float3x3) View.TranslatedWorldToView);
+
+    float2 PixelViewportPos = (float2) DispatchThreadId + 0.5; // relative to ViewportMin
+
+// view-space position of this pixel
+    float2 PixelNDC = ViewportUVToScreenPos(PixelViewportPos * SceneColorViewport_ViewportSizeInverse);
+    float3 PixelViewPos = float3(PixelNDC * PixelDepth
+    / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), PixelDepth);
+
+// probe texel P sits at viewport position (P + 0.5) * TileSize
+    float2 GridPos = PixelViewportPos / (float) TileSize - 0.5;
+    int2 P0 = (int2) floor(GridPos);
+    float2 F = GridPos - (float2) P0;
+
+    int2 GridMax = (int2) floor(SceneColorViewport_ViewportSize / (float) TileSize) - 1;
+
+    float4 BiW = float4((1 - F.x) * (1 - F.y), F.x * (1 - F.y), (1 - F.x) * F.y, F.x * F.y);
+
+    float3 Sum = 0.0;
+    float WSum = 0.0;
+    float BestW = -1.0;
+    float3 BestRad = 0.0;
+
+[unroll]
+    for (int c = 0; c < 4; c++)
+    {
+        int2 P = clamp(P0 + int2(c & 1, c >> 1), int2(0, 0), GridMax);
+
+    // where that probe actually sampled the scene
+        float2 ProbeViewportPos = ((float2) P + 0.5) * (float) TileSize + 0.5;
+        int2 ProbePixel = (int2) ProbeViewportPos + (int2) SceneColorViewport_ViewportMin
+                                               + (int2) View.ViewRectMin.xy;
+        float ProbeDepth = ConvertFromDeviceZ(SceneDepth.Load(int3(ProbePixel, 0)).r);
+
+        float2 ProbeNDC = ViewportUVToScreenPos(ProbeViewportPos * SceneColorViewport_ViewportSizeInverse);
+        float3 ProbeViewPos = float3(ProbeNDC * ProbeDepth
+        / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
+
+    // plane distance, not depth difference
+        float PlaneDist = abs(dot(ProbeViewPos - PixelViewPos, PixelNormal));
+        float DepthW = saturate(1.0 - PlaneDist / (0.03 * PixelDepth));
+
+        float3 Rad = ProbeCascade.Load(int3(P, 0)).rgb;
+
+        float W = BiW[c] * DepthW;
+        Sum += Rad * W;
+        WSum += W;
+
+        if (BiW[c] > BestW)
+        {
+            BestW = BiW[c];
+            BestRad = Rad;
+        } // fallback
+    }
+
+    float3 ProbeRGB = (WSum > 1e-4) ? Sum / WSum : BestRad;
+
+    float4 SceneColor = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, sampleUV, 0);
+
+    // Write output, apply as lighting multiplying by diffuse
+    Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeRGB * PI * Intensity * GBuffer.DiffuseColor, 1.0);
+
+    //Just debug light
+    //Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeColor.rgb,1.0);
+
+}
