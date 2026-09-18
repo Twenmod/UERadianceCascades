@@ -1,16 +1,11 @@
-// Custom SceneViewExtension Template for Unreal Engine
-// Copyright 2023 - 2025 Ossi Luoto
-// 
-// Subsystem to keep custom SceneViewExtension alive
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Subsystems/EngineSubsystem.h"
-#include "TemplateSubsystem.generated.h"
+#include "SceneViewSubsystem.generated.h"
 
  UCLASS()
-class UTemplateSubsystem : public UEngineSubsystem
+class USceneViewSubsystem : public UEngineSubsystem
 {
 	GENERATED_BODY()
 public:

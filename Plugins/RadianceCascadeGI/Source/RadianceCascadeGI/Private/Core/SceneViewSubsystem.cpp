@@ -1,19 +1,14 @@
-// Custom SceneViewExtension Template for Unreal Engine
-// Copyright 2023 - 2025 Ossi Luoto
-// 
-// Subsystem to keep custom SceneViewExtension alive
-
-#include "TemplateSubsystem.h"
-#include "ScreenSpaceRCSceneExtension.h"
+#include "SceneViewSubsystem.h"
+#include "ScreenSpace/ScreenSpaceRCSceneExtension.h"
 #include "SceneViewExtension.h"
 
-void UTemplateSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+void USceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	CustomSceneViewExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
 	UE_LOG(LogTemp, Log, TEXT("SceneViewExtensionTemplate: Subsystem initialized & SceneViewExtension created"));
 }
 
-void UTemplateSubsystem::Deinitialize()
+void USceneViewSubsystem::Deinitialize()
 {
 	{
 		CustomSceneViewExtension->IsActiveThisFrameFunctions.Empty();

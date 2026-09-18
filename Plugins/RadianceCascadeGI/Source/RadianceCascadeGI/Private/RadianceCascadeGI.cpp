@@ -1,6 +1,8 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "RadianceCascadeGI.h"
+
+#include "Misc/ConfigUtilities.h"
 #if WITH_EDITOR
 #include "DirectoryWatcherModule.h"
 #endif
@@ -15,7 +17,10 @@ void FRadianceCascadeGIModule::StartupModule()
 	AddShaderSourceDirectoryMapping(TEXT("/Plugins/SceneViewExtensionTemplate"), PluginShaderDir);
 
 
-
+	UE::ConfigUtilities::ApplyCVarSettingsFromIni(
+		TEXT("/Script/RadianceCascadeGI.RCSettings"),
+		*GEngineIni,
+		ECVF_SetByProjectSetting);
 
 
 
