@@ -14,7 +14,7 @@ void FRadianceCascadeGIModule::StartupModule()
 
 	// Set up the Shader Directories
 	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RadianceCascadeGI"))->GetBaseDir(), TEXT("Shaders"));
-	AddShaderSourceDirectoryMapping(TEXT("/Plugins/SceneViewExtensionTemplate"), PluginShaderDir);
+	AddShaderSourceDirectoryMapping(TEXT("/Plugins/RadianceCascadeGI"), PluginShaderDir);
 
 
 	UE::ConfigUtilities::ApplyCVarSettingsFromIni(

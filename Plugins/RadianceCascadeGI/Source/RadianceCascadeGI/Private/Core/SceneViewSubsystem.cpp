@@ -1,17 +1,19 @@
 #include "SceneViewSubsystem.h"
+
+#include "RCVars.h"
 #include "ScreenSpace/ScreenSpaceRCSceneExtension.h"
 #include "SceneViewExtension.h"
 
 void USceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	CustomSceneViewExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
-	UE_LOG(LogTemp, Log, TEXT("SceneViewExtensionTemplate: Subsystem initialized & SceneViewExtension created"));
+	ScreenSpaceExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
+	
 }
 
 void USceneViewSubsystem::Deinitialize()
 {
 	{
-		CustomSceneViewExtension->IsActiveThisFrameFunctions.Empty();
+		ScreenSpaceExtension->IsActiveThisFrameFunctions.Empty();
 
 		FSceneViewExtensionIsActiveFunctor IsActiveFunctor;
 
@@ -20,9 +22,9 @@ void USceneViewSubsystem::Deinitialize()
 			return TOptional<bool>(false);
 		};
 
-		CustomSceneViewExtension->IsActiveThisFrameFunctions.Add(IsActiveFunctor);
+		ScreenSpaceExtension->IsActiveThisFrameFunctions.Add(IsActiveFunctor);
 	}
 
-	CustomSceneViewExtension.Reset();
-	CustomSceneViewExtension = nullptr;
+	ScreenSpaceExtension.Reset();
+	ScreenSpaceExtension = nullptr;
 }

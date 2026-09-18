@@ -14,5 +14,6 @@ public:
 	virtual void Deinitialize() override;
 
 private:
-	TSharedPtr<class FScreenSpaceRCSceneExtension, ESPMode::ThreadSafe> CustomSceneViewExtension;
+	TSharedPtr<class FScreenSpaceRCSceneExtension, ESPMode::ThreadSafe> ScreenSpaceExtension;
+	//TSharedPtr<class FScreenSpaceRCSceneExtension, ESPMode::ThreadSafe> WorldSpaceExtension;
 };

@@ -87,10 +87,6 @@ public:
 	}
 };
 
-
-
-
-
 // Merges & Outputs the probes
 class RADIANCECASCADEGI_API FScreenSpaceRCOutputShader : public FGlobalShader
 {
