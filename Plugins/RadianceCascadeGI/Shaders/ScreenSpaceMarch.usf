@@ -23,6 +23,7 @@ RWTexture2D<uint> ProbeCascadeMask;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 SCREEN_PASS_TEXTURE_VIEWPORT(TraceViewport)
+SCREEN_PASS_TEXTURE_VIEWPORT(CascadeViewport)
 uint Cascade;
 uint CascadeCount;
 uint BaseRayCount;
@@ -82,19 +83,14 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
-	float InvTileSize = 1.0 / float(TileSize);
-	float2 CascadeViewportMin = SceneColorViewport_ViewportMin * InvTileSize;
-	float2 CascadeViewportMax = SceneColorViewport_ViewportMax * InvTileSize;
-	uint2 PixelId = DispatchThreadId + CascadeViewportMin;
-
+	uint2 PixelId = DispatchThreadId;
+	
 	// Check that we are in scope
-	if (any(PixelId >= CascadeViewportMax))
-	{
-		return;
-	}
+    if (any(float2(DispatchThreadId) >= CascadeViewport_ViewportSize))
+        return;
 
-	float2 CascadeViewportSize = SceneColorViewport_ViewportSize * InvTileSize;
-	float2 CascadeViewportSizeInverse = 1.0 / CascadeViewportSize;
+    float2 CascadeViewportSize = CascadeViewport_ViewportSize;
+    float2 CascadeViewportSizeInverse = CascadeViewport_ViewportSizeInverse;
 
 	uint RayCount = pow(BaseRayCount, 1 + Cascade);
 	float SqrtBase = sqrt(float(BaseRayCount));
@@ -268,12 +264,19 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 
 		if (Cascade < CascadeCount - 1)
 		{
-			int2 TilePos = int2(Index % UpperSpacing, Index / UpperSpacing) * (int2)UpperSize;
+            int2 TilePos = int2(Index % UpperSpacing, Index / UpperSpacing) * (int2) UpperSize;
 
-            uint UpMask = PreviousProbeCascadeMask.Load(int3(TilePos+MaxPos[0]+round(Ratio),0));
+            float2 UpperUV = (float2(TilePos + MinPos) + Ratio + 0.5) * CascadeViewport_ExtentInverse;
+            float2 TileMin = (float2(TilePos) + 0.5) * CascadeViewport_ExtentInverse;
+            float2 TileMax = (float2(TilePos) + UpperSize - 0.5) * CascadeViewport_ExtentInverse;
+            UpperUV = clamp(UpperUV, TileMin, TileMax);
+
+            int2 UpperTexel = clamp(TilePos + MinPos + int2(round(Ratio)),
+                        TilePos, TilePos + (int2) UpperSize - 1);
+
+            uint UpMask = PreviousProbeCascadeMask.Load(int3(UpperTexel, 0));
 			float Denom = WeightedBitSum(UpMask);
-
-            float3 UpRad = PreviousProbeCascade.SampleLevel(GlobalBilinearClampedSampler, (TilePos + MinPos + Ratio)*CascadeViewportSizeInverse, 0).rgb;
+            float3 UpRad = PreviousProbeCascade.SampleLevel(GlobalBilinearClampedSampler, UpperUV, 0).rgb;
 
             //combine against our own occlusion since the ray could've been blocked here
 			float Survive = (Denom > 0.0) ? WeightedBitSum(UpMask & ~OcclusionBits) / Denom : 0.0;

@@ -92,10 +92,17 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	uint32 TileSize = static_cast<uint32>(CVarTileSize->GetInt());
 
+	//Get viewports
+	const FIntPoint SceneColorExtent = SceneColor.Texture->Desc.Extent;
+	const FIntPoint ViewSize = SceneColor.ViewRect.Size();
+	const FIntPoint CascadeExtent = FIntPoint::DivideAndRoundUp(SceneColorExtent, (int32)TileSize);
+	const FIntPoint CascadeViewSize = FIntPoint::DivideAndRoundUp(ViewSize, (int32)TileSize);
+
 	//Initialize resources if not there
-	if (!bInitialized || CurrentResolution != SceneDesc.Extent / TileSize)
+	if (!bInitialized || CurrentResolution != CascadeExtent || CurrentTileSize != TileSize)
 	{
-		CurrentResolution = SceneDesc.Extent / TileSize;
+		CurrentResolution = CascadeExtent;
+		CurrentTileSize = TileSize;
 		RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC Initialization");
 		{
 			//Initialize Cascade textures
@@ -193,11 +200,18 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		auto BitWeightLUTSRV = GraphBuilder.CreateSRV(BitWeightLut, PF_R32_FLOAT);
 		int BaseRayCount = CVarRayCount->GetInt();
 
-		float Diagonal = sqrt(MarchPassViewSize.X * MarchPassViewSize.X + MarchPassViewSize.Y * MarchPassViewSize.Y);
+		const FScreenPassTextureViewport CascadeViewport(
+			CascadeExtent, FIntRect(FIntPoint::ZeroValue, CascadeViewSize));
 
-		int CascadeCount = ceil(log(Diagonal) / log(BaseRayCount)) + 1;
+		const float Diagonal = FMath::Sqrt(float(CascadeViewSize.X) * CascadeViewSize.X +
+			float(CascadeViewSize.Y) * CascadeViewSize.Y);
+		int CascadeCount = FMath::CeilToInt(FMath::Loge(Diagonal) / FMath::Loge((float)BaseRayCount)) + 1;
+		CascadeCount = FMath::Clamp(CascadeCount, 1, MAX_CASCADES);
+
+		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(
+			CascadeViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+
 		TShaderMapRef<FScreenSpaceRCMarchShader> MarchShader(GlobalShaderMap);
-		FIntVector MarchGroupCount = FComputeShaderUtils::GetGroupCount(MarchPassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
 		auto DepthTexture = ViewInfo.GetSceneTextures().Depth.Resolve;
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(), ERHIFeatureLevel::SM5);
 		FScreenPassTextureViewport TraceViewport(DepthTexture, ViewInfo.ViewRect);
@@ -226,10 +240,11 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->OriginalSceneColor = SceneColor.Texture;
 			MarchParametersCascade->SceneDepth = DepthTexture;
 			MarchParametersCascade->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+			MarchParametersCascade->TraceViewport = GetScreenPassTextureViewportParameters(TraceViewport);
+			MarchParametersCascade->CascadeViewport = GetScreenPassTextureViewportParameters(CascadeViewport);
 			MarchParametersCascade->BaseRayCount = BaseRayCount;
 			MarchParametersCascade->Cascade = i;
 			MarchParametersCascade->CascadeCount = CascadeCount;
-			MarchParametersCascade->TraceViewport = GetScreenPassTextureViewportParameters(TraceViewport);
 			MarchParametersCascade->SceneTextures = SceneTextureParams;
 			MarchParametersCascade->IntervalMult = CVarIntervalMult->GetFloat();
 			MarchParametersCascade->TileSize = TileSize;

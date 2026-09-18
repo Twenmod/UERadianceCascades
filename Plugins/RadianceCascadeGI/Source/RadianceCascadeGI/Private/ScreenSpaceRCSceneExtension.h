@@ -33,7 +33,8 @@ public:
 	TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
 	TRefCountPtr<FRDGPooledBuffer> BitWeightLUTBuffer;
 
-	FInt32Point CurrentResolution;
+	FInt32Point CurrentResolution = FInt32Point(0, 0);
+	uint32 CurrentTileSize = 0;
 
 };
 
@@ -50,6 +51,7 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, TraceViewport)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, CascadeViewport)
 		SHADER_PARAMETER_STRUCT_REF(FBlueNoise, BlueNoise)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColor)
