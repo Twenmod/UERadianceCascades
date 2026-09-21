@@ -5,7 +5,10 @@
 
 #include "RCHashTable.ush"
 
+
+
 // Shader parameters
+
 RWTexture2D<float4> Output;
 
 StructuredBuffer<uint64_t> Probes;
@@ -14,7 +17,9 @@ RWStructuredBuffer<uint64_t> RWProbes;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
+
 //Layout of the key,
+
 #define KEY_BITS_X      17
 #define KEY_BITS_Y      17
 #define KEY_BITS_Z      17
@@ -67,10 +72,6 @@ uint NormalToFace(float3 N)
 uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
 {
     uint Level = ComputeLevel(WorldPos, CameraPos);
-    float VS = LevelVoxelSize(Level);
-
-    //move along normal with voxel size
-    int3 Cell = int3(floor(WorldPos / VS));
 
     return KeyPack((uint) Cell.x, KEY_SHIFT_X, KEY_BITS_X)
          | KeyPack((uint) Cell.y, KEY_SHIFT_Y, KEY_BITS_Y)
@@ -79,7 +80,6 @@ uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
          | KeyPack(1u, KEY_SHIFT_VALID, KEY_BITS_VALID);
 }
 
-//Hash to color debug
 uint MurmurFinalize32(uint h)
 {
     h ^= h >> 16;
@@ -88,6 +88,13 @@ uint MurmurFinalize32(uint h)
     h *= 0xc2b2ae35u;
     h ^= h >> 16;
     return h;
+}
+
+uint HashKey(uint64_t Key, uint TableSize) // TableSize power of two
+{
+    uint h = MurmurFinalize32((uint) Key);
+    h = MurmurFinalize32(h ^ (uint) (Key >> 32));
+    return h & (TableSize - 1u);
 }
 
 uint Hash64(uint Lo, uint Hi)

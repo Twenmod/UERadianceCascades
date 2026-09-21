@@ -9,10 +9,16 @@
 
 IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCShader, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceRC.usf", "MainCS", SF_Compute);
 
-
 FWorldSpaceRCSceneExtension::FWorldSpaceRCSceneExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
 	UE_LOG(LogTemp, Log, TEXT("SceneViewExtensionTemplate: Custom SceneViewExtension registered"));
+	ResetCommand = MakeUnique<FAutoConsoleCommand>(
+		TEXT("r.RC.ResetTable"),
+		TEXT("Reset hashtable."),
+		FConsoleCommandDelegate::CreateLambda([this]()
+			{
+				bResetTable.store(true, std::memory_order_release);
+			}));
 }
 
 void FWorldSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessingPass PassId, const FSceneView& View, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled)
@@ -22,8 +28,11 @@ void FWorldSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessingP
 	{
 		InOutPassCallbacks.Add(FAfterPassCallbackDelegate::CreateRaw(this, &FWorldSpaceRCSceneExtension::CustomPostProcessing));
 	}
+
+
 }
 
+static constexpr uint32 HashTableSize = 4096;
 
 FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView, const FPostProcessMaterialInputs& Inputs)
 {
@@ -49,6 +58,14 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 
 	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
+	if (!bInitialized)
+	{
+		//Create Hashmaps for probes
+		bInitialized = true;
+		FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), HashTableSize);
+		AllocatePooledBuffer(Desc, CascadeHashTable, TEXT("RC Cascade Hashmap"));
+	}
+		
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(), ERHIFeatureLevel::SM5);
@@ -66,6 +83,10 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 			FLinearColor ClearColor(0., 0., 0., 0.);
 			OutputDesc.ClearValue = FClearValueBinding(ClearColor);
 		}
+		//Clear hash
+		auto HashTable = GraphBuilder.RegisterExternalBuffer(CascadeHashTable);
+		auto HashTableUAV = GraphBuilder.CreateUAV(HashTable);
+		AddClearUAVPass(GraphBuilder, HashTableUAV, 0);
 
 		// Create target texture
 		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("World space RC Output Texture"));
@@ -76,6 +97,11 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 		// Input is the SceneColor from PostProcess Material Inputs
 		PassParameters->View = ViewInfo.ViewUniformBuffer;
 		PassParameters->SceneTextures = SceneTextureParams;
+		
+		PassParameters->HashTable = GraphBuilder.CreateSRV(HashTable);
+		PassParameters->RWHashTable = HashTableUAV;
+
+		PassParameters->HashTableSize = HashTableSize;
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);

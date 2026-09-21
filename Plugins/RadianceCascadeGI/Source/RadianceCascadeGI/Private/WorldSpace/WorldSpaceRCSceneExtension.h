@@ -28,8 +28,9 @@ public:
 	FScreenPassTexture CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessMaterialInputs& Inputs);
 
 	bool bInitialized = false;
-
-	//TArray<TRefCountPtr<IPooledRenderTarget>> ProbeCascadeArray;
+	std::atomic<bool> bResetTable{ false };
+	TUniquePtr<FAutoConsoleCommand> ResetCommand;
+	TRefCountPtr<FRDGPooledBuffer> CascadeHashTable;
 	//TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
 	//TRefCountPtr<FRDGPooledBuffer> BitWeightLUTBuffer;
 
@@ -50,6 +51,9 @@ public:
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
+		SHADER_PARAMETER(uint32, HashTableSize)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
