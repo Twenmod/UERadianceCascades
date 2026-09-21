@@ -1,4 +1,4 @@
-
+#include "WorldSpace/WorldSpaceRCSceneExtension.h"
 
 #include "IContentBrowserSingleton.h"
 #include "RenderTargetPool.h"
@@ -6,7 +6,6 @@
 #include "SceneTextureParameters.h"
 
 #include "Core/RCVars.h"
-#include "WorldSpace/WorldSpaceRCSceneExtension.h"
 
 FWorldSpaceRCSceneExtension::FWorldSpaceRCSceneExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
@@ -35,7 +34,7 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 	{
 		return SceneColor;
 	}
-
+	
 	auto SceneDesc = SceneColor.Texture->Desc;
 
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");

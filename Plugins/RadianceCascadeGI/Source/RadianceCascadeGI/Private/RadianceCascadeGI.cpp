@@ -13,8 +13,10 @@ void FRadianceCascadeGIModule::StartupModule()
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 
 	// Set up the Shader Directories
-	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RadianceCascadeGI"))->GetBaseDir(), TEXT("Shaders"));
-	AddShaderSourceDirectoryMapping(TEXT("/Plugins/RadianceCascadeGI"), PluginShaderDir);
+	FString SSPluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RadianceCascadeGI"))->GetBaseDir(), TEXT("Shaders")) / TEXT("ScreenSpace");
+	FString WSPluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RadianceCascadeGI"))->GetBaseDir(), TEXT("Shaders")) / TEXT("WorldSpace");
+	AddShaderSourceDirectoryMapping(TEXT("/Plugins/RadianceCascadeGI/ScreenSpace"), SSPluginShaderDir);
+	AddShaderSourceDirectoryMapping(TEXT("/Plugins/RadianceCascadeGI/WorldSpace"), WSPluginShaderDir);
 
 
 	UE::ConfigUtilities::ApplyCVarSettingsFromIni(
@@ -26,7 +28,7 @@ void FRadianceCascadeGIModule::StartupModule()
 
 	//Hot reload debugging todo: remove
 #if WITH_EDITOR
-	WatchedShaderDir = PluginShaderDir;
+	WatchedShaderDir = SSPluginShaderDir;
 
 	FDirectoryWatcherModule& DWModule =
 		FModuleManager::LoadModuleChecked<FDirectoryWatcherModule>("DirectoryWatcher");

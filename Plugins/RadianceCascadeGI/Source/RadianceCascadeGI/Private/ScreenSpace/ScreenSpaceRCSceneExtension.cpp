@@ -8,8 +8,8 @@
 
 #include "Core/RCVars.h"
 
-IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCOutputShader, "/Plugins/SceneViewExtensionTemplate/PostProcessCS.usf", "MainCS", SF_Compute);
-IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCMarchShader, "/Plugins/SceneViewExtensionTemplate/ScreenSpaceMarch.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCOutputShader, "/Plugins/RadianceCascadeGI/ScreenSpace/ScreenSpaceApply.usf", "MainCS", SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FScreenSpaceRCMarchShader, "/Plugins/RadianceCascadeGI/ScreenSpace/ScreenSpaceMarch.usf", "MainCS", SF_Compute);
 
 
 
