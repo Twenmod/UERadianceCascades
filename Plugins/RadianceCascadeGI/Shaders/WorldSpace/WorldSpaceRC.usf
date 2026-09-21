@@ -35,8 +35,8 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 //Limits from above sizes
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
 
-static const float kBaseVoxelSize = 64.0;
-static const float kLevelBaseDist = 500.0;
+static const float kBaseVoxelSize = 32.0;
+static const float kLevelBaseDist = 200.0;
 
 uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 {
@@ -45,8 +45,9 @@ uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 
 uint ComputeLevel(float3 WorldPos, float3 CameraPos)
 {
-    float Dist = distance(WorldPos, CameraPos);
-    float L = log2(max(Dist / kLevelBaseDist, 1.0)); // base 2
+    float3 Distance = abs(WorldPos - CameraPos);
+    float Radius = max(Distance.x, max(Distance.y, Distance.z));
+    float L = log2(max(Radius / kLevelBaseDist, 1.0)); // base 2
     return (uint) clamp(floor(L), 0.0, (float) kMaxLevel);
 }
 
@@ -70,7 +71,7 @@ uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
     float VS = LevelVoxelSize(Level);
 
     //move along normal with voxel size
-    int3 Cell = int3(floor(WorldPos / VS));
+    int3 Cell = int3(floor((WorldPos / VS)-0.5));
 
     return KeyPack((uint) Cell.x, KEY_SHIFT_X, KEY_BITS_X)
          | KeyPack((uint) Cell.y, KEY_SHIFT_Y, KEY_BITS_Y)
@@ -152,5 +153,5 @@ float3 ColorFromHash1(uint h1)
     uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
     uint Hi = (uint32_t) (Key >> 32);
     float3 Color = ColorFromHash(Lo, Hi);
-	Output[PixelId] = float4(hasKey && Index != 0 ? Color : float3(0,0,0), 1);
+	Output[PixelId] = float4(hasKey && Index < HashTableSize ? Color : float3(0,0,0), 1);
 }
