@@ -5,312 +5,36 @@
 
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/DeferredShadingCommon.ush"
-#include "/Engine/Private/SSRT/SSRTRayCast.ush"
 #include "/Engine/Private/ScreenPass.ush"
-#include "/Engine/Public/Platform.ush"
 #include "/Engine/Private/BlueNoise.ush"
+
+#include "RCHashTable.ush"
+
+
+
 // Shader parameters
 
-// SceneColor texture
-Texture2D OriginalSceneColor;
-Texture2D SceneDepth;
-
-Texture2D<float4> PreviousProbeCascade;
-Texture2D<uint> PreviousProbeCascadeMask;
-RWTexture2D<float4> ProbeCascade;
-RWTexture2D<uint> ProbeCascadeMask;
+RWTexture2D<float4> Output;
 
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
-SCREEN_PASS_TEXTURE_VIEWPORT(TraceViewport)
-SCREEN_PASS_TEXTURE_VIEWPORT(CascadeViewport)
-uint Cascade;
-uint CascadeCount;
-uint BaseRayCount;
 
-float IntervalMult;
-uint TileSize;
-float WallThickness;
-
-Buffer<float> BitWeightLUT;
-
-float WeightedBitSum(uint Bits)
-{
-    return BitWeightLUT[(Bits) & 0xFF]
-         + BitWeightLUT[((Bits >> 8) & 0xFF) + 256]
-         + BitWeightLUT[((Bits >> 16) & 0xFF) + 512]
-         + BitWeightLUT[((Bits >> 24) & 0xFF) + 768];
-
-}
-
-// WeightedBitSum(0xFFFFFFFFu) == 1 / sin(PI/64)
-static const float SLICE_W = 20.380016247096115;
-
-float3 UnprojectPixel(float2 Pixel, float LinearDepth)
-{
-    float2 UV = (Pixel - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
-    float2 NDC = ViewportUVToScreenPos(UV);
-    return float3(NDC * LinearDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), LinearDepth);
-}
-
-float SliceAngle(float3 Delta, float3 T, float3 ViewDir)
-{
-    return atan2Fast(dot(Delta, T), dot(Delta, ViewDir));
-}
-
-uint BitsForSpan(float ThetaA, float ThetaB)
-{
-    float A = min(ThetaA, ThetaB);
-    float B = max(ThetaA, ThetaB);
-    float FA = saturate(A / PI);
-    float FB = saturate(B / PI);
-
-    uint Start = min(31u, (uint) floor(FA * 32.0));
-    uint Count = (uint) ceil((FB - FA) * 32.0);
-    if (Count == 0)
-        return 0;
-    Count = min(Count, 32u - Start);
-    uint Mask = (Count >= 32u) ? 0xFFFFFFFFu : ((1u << Count) - 1u);
-    return Mask << Start;
-}
-
-float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fallback)
-{
-    float3 Line = LineEnd - LineStart;
-    float DenomSq = dot(Line, Line);
-    return DenomSq < 1e-10 ? Fallback : saturate(dot(Point - LineStart, Line) / DenomSq);
-}
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
+	
     uint2 PixelId = DispatchThreadId;
 	
 	// Check that we are in scope
-    if (any(float2(DispatchThreadId) >= CascadeViewport_ViewportSize))
+    if (any(float2(DispatchThreadId) >= SceneColorViewport_ViewportSize))
         return;
 
-    float2 CascadeViewportSize = CascadeViewport_ViewportSize;
-    float2 CascadeViewportSizeInverse = CascadeViewport_ViewportSizeInverse;
-
-    uint RayCount = pow(BaseRayCount, 1 + Cascade);
-    float SqrtBase = sqrt(float(BaseRayCount));
-    float Spacing = pow(SqrtBase, Cascade);
-    uint2 Size = floor(CascadeViewportSize / Spacing);
-
-	// Current probe
-    float2 ProbeRelativePosition = DispatchThreadId % Size;
-    float2 RayPos = min(floor(DispatchThreadId / Size), Spacing - 1.0);
-	// Base index of the rays for knowing which angle to start
-    float BaseIndex = float(BaseRayCount) * (RayPos.x + (Spacing * RayPos.y));
-
-    float2 ProbeCenter = ((ProbeRelativePosition + 0.5) * Spacing) * TileSize + SceneColorViewport_ViewportMin + 0.5;
-    float BaseIntervalPixels = 2.0 * TileSize;
-
-    float Scale = pow(float(BaseRayCount), float(Cascade)) * IntervalMult;
-    float IntervalLength = BaseIntervalPixels * Scale;
-    float IntervalStart = BaseIntervalPixels * (Scale - 1.0) / (float(BaseRayCount) - 1.0);
-    float IntervalEnd = IntervalStart + IntervalLength;
-
-    float4 Radiance = float4(0.0, 0.0, 0.0, 0.0);
-
-    float2 ProbeBufferUV = (ProbeCenter - SceneColorViewport_ViewportMin + View.ViewRectMin.xy) * View.BufferSizeAndInvSize.zw;
-    int2 ProbePixel = (int2) floor(ProbeCenter) + (int2) View.ViewRectMin.xy;
-    float ProbeDeviceZ = SceneDepth.Load(int3(ProbePixel, 0)).r;
-    float ProbeDepth = ConvertFromDeviceZ(ProbeDeviceZ);
-
-    float2 ProbeUV = (ProbeCenter - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
-    float2 ProbeNDC = ViewportUVToScreenPos(ProbeUV);
-    float3 ProbeViewPos = float3(ProbeNDC * ProbeDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
-    FGBufferData GBuffer = GetGBufferData(ProbeBufferUV);
-    float3 ProbeNormalWS = GBuffer.WorldNormal;
-    float3 ProbeNormal = mul(ProbeNormalWS, (float3x3) View.TranslatedWorldToView);
-    float3 ViewDir = normalize(-ProbeViewPos);
-
-    if (ProbeDeviceZ <= 0.0)
-    {
-        ProbeCascade[PixelId] = float4(0, 0, 0, 1);
-        ProbeCascadeMask[PixelId] = 0u;
-        return;
-    }
-
-	// Precalculate upper cascade weights
-    float UpperSpacing = pow(SqrtBase, Cascade + 1);
-    float2 UpperSize = floor(CascadeViewportSize / UpperSpacing);
-    float2 UpperGridPos = ((ProbeRelativePosition + 0.5) * Spacing) / UpperSpacing - 0.5;
-    int2 MinPos = (int2) floor(UpperGridPos);
-
-    int2 MaxClamp = (int2) UpperSize - 1;
-    int2 MaxPos[4];
-    MaxPos[0] = clamp(MinPos + int2(0, 0), int2(0, 0), MaxClamp);
-    MaxPos[1] = clamp(MinPos + int2(1, 0), int2(0, 0), MaxClamp);
-    MaxPos[2] = clamp(MinPos + int2(0, 1), int2(0, 0), MaxClamp);
-    MaxPos[3] = clamp(MinPos + int2(1, 1), int2(0, 0), MaxClamp);
-
-	// Project probes
-    float3 UpperViewPos[4];
-	[unroll]
-    for (int c = 0; c < 4; c++)
-    {
-        float2 ScreenPixel = (((float2) MaxPos[c] + 0.5) * UpperSpacing) * TileSize + SceneColorViewport_ViewportMin + 0.5;
-        float DeviceZ = SceneDepth.Load(int3((int2) ScreenPixel + (int2) View.ViewRectMin.xy, 0)).r;
-        float LinearZ = ConvertFromDeviceZ(DeviceZ);
-        UpperViewPos[c] = UnprojectPixel(ScreenPixel, LinearZ);
-    }
-
-    float2 InitRatio = saturate(UpperGridPos - (float2) MinPos);
-    float2 Ratio = InitRatio;
-	[unroll]
-    for (int It = 0; It < 2; It++)
-    {
-        float3 L0 = lerp(UpperViewPos[0], UpperViewPos[2], Ratio.y);
-        float3 L1 = lerp(UpperViewPos[1], UpperViewPos[3], Ratio.y);
-        Ratio.x = ProjectPointLine(L0, L1, ProbeViewPos, InitRatio.x);
-        L0 = lerp(UpperViewPos[0], UpperViewPos[1], Ratio.x);
-        L1 = lerp(UpperViewPos[2], UpperViewPos[3], Ratio.x);
-        Ratio.y = ProjectPointLine(L0, L1, ProbeViewPos, InitRatio.y);
-    }
-    uint RayMaskUnion = 0u;
-    float Jitter = BlueNoiseScalar(PixelId, 0) * 0.5;
-
-	// March SceneColor
-    for (int i = 0; i < BaseRayCount; i++)
-    {
-        float Index = BaseIndex + float(i);
-		// Add 0.5 radians to avoid vertical angles
-        float AngleStep = Index + 0.5;
-        float Angle = ((2 * PI) / RayCount) * AngleStep;
-        float2 RayDirection = float2(cos(Angle), -sin(Angle));
-
-		// Project the pixel so we have a depth direction instead of just 2d
-        float2 DirPixel = ProbeCenter + RayDirection;
-        float2 DirUV = (DirPixel - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
-        float2 DirNDC = ViewportUVToScreenPos(DirUV);
-        float3 DirViewPos = float3(DirNDC * ProbeDepth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), ProbeDepth);
-        float3 SliceRaw = DirViewPos - ProbeViewPos;
-        float3 T = SliceRaw - ViewDir * dot(SliceRaw, ViewDir);
-
-        float TLen = length(T);
-        bool Degenerate = (TLen < 1e-6);
-        T = Degenerate ? float3(0.0, 0.0, 1.0) : (T / TLen);
-
-        const float HorizonMargin = 0.1;
-        float NTheta = SliceAngle(ProbeNormal, T, ViewDir);
-        uint TracedMask = Degenerate ? 0u : BitsForSpan(NTheta - PI * 0.5 - HorizonMargin, NTheta + PI * 0.5 + HorizonMargin);
-
-        uint OcclusionBits = 0;
-        float3 SliceRadiance = 0;
-
-		// Thickness of geometry, since we only have the surface depth.
-
-        const int MaxSteps = 8;
-        float T0 = max(IntervalStart, 1.0);
-        float Span = (IntervalEnd) - T0;
-
-        int NumSteps = 0;
-        float StepPixels = 0.0;
-        if (!Degenerate && Span > 0.0)
-        {
-            NumSteps = (int) clamp(ceil(Span), 1.0, (float) MaxSteps);
-            StepPixels = Span / (float) NumSteps;
-        }
-        for (int Step = 0; Step < NumSteps; Step++)
-        {
-            float t = T0 + (float(Step) + 0.5 + Jitter) * StepPixels;
-
-            float2 SamplePixel = ProbeCenter + RayDirection * t;
-            if (any(SamplePixel < SceneColorViewport_ViewportMin) || any(SamplePixel >= SceneColorViewport_ViewportMax))
-            {
-                break; // miss
-            }
-
-            float SampleDeviceZ = SceneDepth.Load(int3(int2(SamplePixel + View.ViewRectMin.xy), 0)).r;
-            if (SampleDeviceZ <= 0.00)
-                continue; // Sky
-
-            float SampleDepth = ConvertFromDeviceZ(SampleDeviceZ);
-
-            float3 SampleViewPos = UnprojectPixel(SamplePixel, SampleDepth);
-
-            float3 DeltaFront = SampleViewPos - ProbeViewPos;
-
-			// Closer than start
-            if (dot(DeltaFront, T) < 0.0)
-                continue;
-
-            float3 DirFromView = normalize(SampleViewPos);
-            float3 DeltaBack = DeltaFront + DirFromView * WallThickness;
-
-			// Mask based on the occluding slice we assume based on the sampled position
-            uint SectorMask = BitsForSpan(SliceAngle(DeltaFront, T, ViewDir), SliceAngle(DeltaBack, T, ViewDir));
-
-            uint NewBits = SectorMask & ~OcclusionBits;
-            
-			// Sample color if there is no full occlusion
-            if (NewBits != 0)
-            {
-                float2 SampleUV = (SamplePixel + View.ViewRectMin.xy) * View.BufferSizeAndInvSize.zw;
-                float3 Color = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, SampleUV, 0).rgb;
-
-				// approximately Weigh by occlusion
-                SliceRadiance += Color * WeightedBitSum(NewBits);
-            }
-
-            OcclusionBits |= SectorMask;
-
-            if ((OcclusionBits | ~TracedMask) == 0xFFFFFFFFu)
-                break;
-        }
-
-        float4 RadDelta = float4(SliceRadiance / SLICE_W, 0.0);
-        uint MergedMask = OcclusionBits;
-
-        if (Cascade < CascadeCount - 1)
-        {
-            int2 TilePos = int2(Index % UpperSpacing, Index / UpperSpacing) * (int2) UpperSize;
-
-            float2 UpperUV = (float2(TilePos + MinPos) + Ratio + 0.5) * CascadeViewport_ExtentInverse;
-            float2 TileMin = (float2(TilePos) + 0.5) * CascadeViewport_ExtentInverse;
-            float2 TileMax = (float2(TilePos) + UpperSize - 0.5) * CascadeViewport_ExtentInverse;
-            UpperUV = clamp(UpperUV, TileMin, TileMax);
-
-            int2 UpperTexel = clamp(TilePos + MinPos + int2(round(Ratio)),
-                        TilePos, TilePos + (int2) UpperSize - 1);
-
-            uint UpMask = PreviousProbeCascadeMask.Load(int3(UpperTexel, 0));
-            float Denom = WeightedBitSum(UpMask);
-            float3 UpRad = PreviousProbeCascade.SampleLevel(GlobalBilinearClampedSampler, UpperUV, 0).rgb;
-
-            //combine against our own occlusion since the ray could've been blocked here
-            float Survive = (Denom > 0.0) ? WeightedBitSum(UpMask & ~OcclusionBits) / Denom : 0.0;
-
-            RadDelta.rgb += UpRad * Survive;
-            MergedMask = OcclusionBits | UpMask;
-        }
-
-		// cumulative openness, for skylight at resolve
-        RadDelta.a = WeightedBitSum(~MergedMask) / SLICE_W;
-
-        Radiance += RadDelta;
-        RayMaskUnion |= MergedMask;
-    }
-
-    float4 Output = Radiance / float(BaseRayCount);
-
-    ProbeCascade[PixelId] = Output;
-    ProbeCascadeMask[PixelId] = RayMaskUnion;
+    float2 UV = (PixelId - SceneColorViewport_ViewportMin) * SceneColorViewport_ViewportSizeInverse;
+    FGBufferData GBuffer = GetGBufferData(UV);
+    float Depth = ConvertFromDeviceZ(GBuffer.Depth);
+    float2 ProbeNDC = ViewportUVToScreenPos(UV);
+    float3 ProbeViewPos = float3(ProbeNDC * Depth / float2(View.ViewToClip[0][0], View.ViewToClip[1][1]), Depth);
 
 
-	// ProbeCascade[uint2(PixelId)] = float4(RayPos,0,1);
-
-	// float2 StartDepthUV = (ProbeCenter - SceneColorViewport_ViewportMin + View.ViewRectMin.xy)
-	//                 * View.BufferSizeAndInvSize.zw;
-	// float Depth = SceneDepth.SampleLevel(GlobalBilinearClampedSampler, StartDepthUV, 0);
-	// ProbeCascades[uint3(PixelId, Cascade)] = float4(float3(Depth, Depth, Depth), 1.0);
-
-	// float2 HitBufferUV = ProbeCenter * SceneColorViewport_ViewportSizeInverse
-	//                + SceneColorViewport_UVViewportMin;
-	// float4 ColorSample = OriginalSceneColor.SampleLevel(GlobalBilinearClampedSampler, float2(HitBufferUV.xy), 0.0);
-	// ProbeCascade[PixelId] = float4(ProbeNormalWS, 1.0);
-
-	// ProbeCascades[uint3(PixelId, Cascade)] = float4(ProbeCenter * SceneColorViewport_ViewportSizeInverse,0.0,1.0);
+	Output[PixelId] = float4(ProbeViewPos*0.01,1.0);
 }

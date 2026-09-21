@@ -15,5 +15,5 @@ public:
 
 private:
 	TSharedPtr<class FScreenSpaceRCSceneExtension, ESPMode::ThreadSafe> ScreenSpaceExtension;
-	//TSharedPtr<class FScreenSpaceRCSceneExtension, ESPMode::ThreadSafe> WorldSpaceExtension;
+	TSharedPtr<class FWorldSpaceRCSceneExtension, ESPMode::ThreadSafe> WorldSpaceExtension;
 };

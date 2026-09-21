@@ -7,6 +7,9 @@
 
 #include "Core/RCVars.h"
 
+IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCShader, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceRC.usf", "MainCS", SF_Compute);
+
+
 FWorldSpaceRCSceneExtension::FWorldSpaceRCSceneExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
 	UE_LOG(LogTemp, Log, TEXT("SceneViewExtensionTemplate: Custom SceneViewExtension registered"));
@@ -36,9 +39,20 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 	}
 	
 	auto SceneDesc = SceneColor.Texture->Desc;
+	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
+
+	// Accesspoint to our Shaders
+	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewFamily.GetFeatureLevel());
+
+	check(SceneView.bIsViewInfo);
+	const FViewInfo& ViewInfo = static_cast<const FViewInfo&>(SceneView);
+
+	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
+		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(), ERHIFeatureLevel::SM5);
+
 
 		// Setup all the descriptors to create a target texture
 		FRDGTextureDesc OutputDesc;
@@ -54,7 +68,35 @@ FScreenPassTexture FWorldSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder
 		}
 
 		// Create target texture
-		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("Screen space RC Output Texture"));
+		FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("World space RC Output Texture"));
+
+		// Set the shader parameters
+		FWorldSpaceRCShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FWorldSpaceRCShader::FParameters>();
+
+		// Input is the SceneColor from PostProcess Material Inputs
+		PassParameters->View = ViewInfo.ViewUniformBuffer;
+		PassParameters->SceneTextures = SceneTextureParams;
+
+		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
+		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+
+		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
+
+		// Create UAV from Target Texture
+		PassParameters->Output = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(OutputTexture));
+
+
+		// Set Compute Shader and execute
+		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+
+		TShaderMapRef<FWorldSpaceRCShader> ComputeShader(GlobalShaderMap);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("World Space RC Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
+			ComputeShader,
+			PassParameters,
+			GroupCount);
 
 
 		// Copy the output texture back to SceneColor

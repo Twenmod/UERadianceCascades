@@ -28,7 +28,7 @@ void FRadianceCascadeGIModule::StartupModule()
 
 	//Hot reload debugging todo: remove
 #if WITH_EDITOR
-	WatchedShaderDir = SSPluginShaderDir;
+	WatchedShaderDir = WSPluginShaderDir;
 
 	FDirectoryWatcherModule& DWModule =
 		FModuleManager::LoadModuleChecked<FDirectoryWatcherModule>("DirectoryWatcher");

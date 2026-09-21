@@ -1,0 +1,90 @@
+//Modified from Engine/Private/HashTable.ush
+#pragma once
+
+#include "/Engine/Public/Platform.ush"
+
+// Linear probing hash table
+StructuredBuffer<uint64_t> HashTable;
+RWStructuredBuffer<uint64_t> RWHashTable;
+uint HashTableSize;
+
+// Returns true if key is added for the first time.
+// Index input is the first hash table bucket to look in.
+// Index output is the hash table bucket this key is stored in.
+bool HashTableAdd(uint64_t Key, inout uint Index)
+{
+	// Zero is reserved as invalid
+    Key++;
+
+	// TODO v_mul_hi_u32 to avoid integer division
+	// ( Index * HashTableSize ) >> 32
+
+    Index = Index % HashTableSize;
+
+    LOOP
+	ALLOW_UAV_CONDITION
+
+    for (uint i = 0; i < HashTableSize; i++)
+    {
+        uint64_t StoredKey = RWHashTable[Index];
+        if (StoredKey != Key)
+        {
+            if (StoredKey != 0)
+            {
+                Index++;
+                Index = Index >= HashTableSize ? 0 : Index;
+                continue;
+            }
+
+            uint64_t PrevKey;
+            InterlockedCompareExchange(RWHashTable[Index], 0, Key, PrevKey);
+			
+            if (PrevKey == 0)
+                return true;
+            else if (PrevKey != Key)
+            {
+                Index++;
+                Index = Index >= HashTableSize ? 0 : Index;
+                continue;
+            }
+        }
+
+        break;
+    }
+
+    return false;
+}
+
+// Returns true if key is found.
+// Index input is the first hash table bucket to look in.
+// Index output is the hash table bucket this key is stored in if found.
+bool HashTableFind(uint64_t Key, inout uint Index)
+{
+	// Zero is reserved as invalid
+    Key++;
+
+    Index = Index % HashTableSize;
+
+    LOOP
+	ALLOW_UAV_CONDITION
+
+    for (uint i = 0; i < HashTableSize; i++)
+    {
+        uint64_t StoredKey = HashTable[Index];
+        if (StoredKey != Key)
+        {
+            if (StoredKey != 0)
+            {
+                Index++;
+                Index = Index >= HashTableSize ? 0 : Index;
+                continue;
+            }
+
+            return false;
+        }
+
+        break;
+    }
+
+    return true;
+}
