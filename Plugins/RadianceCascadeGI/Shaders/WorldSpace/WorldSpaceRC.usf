@@ -4,12 +4,15 @@
 #include "/Engine/Private/BlueNoise.ush"
 
 #include "RCHashTable.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+
 
 // Shader parameters
 RWTexture2D<float4> Output;
 
 StructuredBuffer<uint64_t> Probes;
 RWStructuredBuffer<uint64_t> RWProbes;
+RaytracingAccelerationStructure TLAS;
 
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
@@ -153,5 +156,24 @@ float3 ColorFromHash1(uint h1)
     uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
     uint Hi = (uint32_t) (Key >> 32);
     float3 Color = ColorFromHash(Lo, Hi);
-	Output[PixelId] = float4(hasKey && Index < HashTableSize ? Color : float3(0,0,0), 1);
+
+    FGBufferData GBuffer = GetGBufferData(BufferUV);
+    float3 WorldNormal = GBuffer.WorldNormal;
+
+    RayDesc Ray;
+    Ray.Origin = TranslatedWorldPos+WorldNormal*0.15;
+    Ray.Direction = reflect(normalizeFast(TranslatedWorldPos), WorldNormal);
+    Ray.TMin = 0.01;
+    Ray.TMax = 50000000.0;
+
+    RayQuery < RAY_FLAG_FORCE_OPAQUE > Q;
+    Q.TraceRayInline(TLAS, RAY_FLAG_NONE, RAY_TRACING_MASK_OPAQUE, Ray);
+    while (Q.Proceed());
+    bool bHit = Q.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    float HitT = bHit ? Q.CommittedRayT() : -1;
+
+	//Output[PixelId] = float4(hasKey && Index < HashTableSize ? Color : float3(0,0,0), 1);
+    Output[PixelId] = float4((float3)
+    (HitT*0.001), 1);
+
 }

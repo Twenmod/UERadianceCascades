@@ -7,6 +7,7 @@
 #include "DirectoryWatcherModule.h"
 #endif
 #define LOCTEXT_NAMESPACE "FRadianceCascadeGIModule"
+#include "DeferredShadingRenderer.h"
 
 void FRadianceCascadeGIModule::StartupModule()
 {
@@ -24,7 +25,8 @@ void FRadianceCascadeGIModule::StartupModule()
 		*GEngineIni,
 		ECVF_SetByProjectSetting);
 
-
+	GIPassHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
+		.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::RenderDiffuseIndirectLight);
 
 	//Hot reload debugging todo: remove
 #if WITH_EDITOR
@@ -43,8 +45,9 @@ void FRadianceCascadeGIModule::StartupModule()
 
 void FRadianceCascadeGIModule::ShutdownModule()
 {
-	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-	// we call this function before unloading the module.
+	FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
+		.Remove(GIPassHandle);
+
 
 #if WITH_EDITOR
 	if (WatcherHandle.IsValid())
