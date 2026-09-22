@@ -1,55 +1,63 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/SceneTextureParameters.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
 #include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "/Engine/Private/RayTracing/RayTracingDeferredShadingCommon.ush"
+#include "/Engine/Private/RayTracing/RayTracingLightingCommon.ush"
 
 RaytracingAccelerationStructure TLAS;
-//RWByteAddressBuffer RWHashTable;
 RWTexture2D<float4> Output;
-//uint HashTableSize;
 Texture2D SceneDepth;
 
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
 {
-	uint2 PixelCoord = DispatchRaysIndex().xy + View.ViewRectMin.xy;
-	float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
+uint2 PixelCoord = DispatchRaysIndex().xy + View.ViewRectMin.xy;
+float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
 
 FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
-	if (GBuffer.ShadingModelID == SHADINGMODELID_UNLIT)
-	{
-		return;
-	}
+    if (GBuffer.ShadingModelID == SHADINGMODELID_UNLIT) return;
 
-	float DeviceZ = SceneDepth.Load(int3(PixelCoord, 0)).r;
-	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
-	float3 N = GBuffer.WorldNormal;
+float DeviceZ = SceneDepth.Load(int3(PixelCoord, 0)).r;
+float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
+float3 N = GBuffer.WorldNormal;
 
+FRayDesc Ray;
+    Ray.Origin    = TranslatedWorldPos + N * 0.5;
+    Ray.Direction = reflect(normalize(TranslatedWorldPos),
+N);
+    Ray.TMin      = 0.01;
+    Ray.TMax      = 100000.0;
 
-float3 RayDir = N;
+FRandomSequence RandSequence;
+    RandomSequence_Initialize(RandSequence, PixelCoord, 0, View.StateFrameIndex, 1);
 
-RayDesc Ray;
-	Ray.Origin = TranslatedWorldPos + N * 0.5;
-	Ray.Direction =
-RayDir;
-	Ray.TMin = 0.0;
-	Ray.TMax = 100000.0;
+FRayCone RayCone = (FRayCone) 0;
+    RayCone.SpreadAngle = View.EyeToPixelSpreadAngle;
 
-	FPackedMaterialClosestHitPayload Payload = (FPackedMaterialClosestHitPayload)0;
-	Payload.SetEnableSkyLightContribution();
+float3 Radiance = 0;
 
-	TraceRay(TLAS, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, RAY_TRACING_MASK_OPAQUE,
-	         RAY_TRACING_SHADER_SLOT_MATERIAL, RAY_TRACING_NUM_SHADER_SLOTS,
-	         0 /*MissShaderIndex*/, Ray, Payload);
+FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
+        Ray,
+        TLAS,
+        TLAS, // FarFieldTLAS, unused when ENABLE_FAR_FIELD_TRACING==0
+        RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+        RAY_TRACING_MASK_OPAQUE,
+        RandSequence,
+        PixelCoord,
+        0.1, // ShadowMaxNormalBias
+        100000.0, // MaxTraceDistance
+        RAY_TRACING_SHADOWS_TYPE_HARD,
+        RAY_TRACING_SHADOWS_TRANSLUCENCY_TYPE_OPAQUE,
+        1, // ShouldDoDirectLighting
+        1, // ShouldDoEmissiveAndIndirectLighting
+        false, // bRayTraceSkyLightContribution
+        false, // bDecoupleSampleGeneration
+        false, // bIsCameraRay
+        RayCone,
+        true, // bEnableSkyLightContribution
+        Radiance);
 
-	if (!Payload.IsHit())
-	{
-		return;
-	}
+    if (Payload.IsMiss()) return;
 
-float HitT = Payload.HitT;
-	float3 BaseColor = Payload.GetBaseColor();
-	//float3 HitNormal = Payload.GetWorldNormal();
-	float3 Radiance = Payload.GetRadiance();
-	float3 IrRadiance = Payload.GetIndirectIrradiance();
-	//float3 HitPos = Ray.Origin + Ray.Direction * HitT
-    Output[PixelCoord] = float4(Radiance+IrRadiance,1);
+    Output[PixelCoord] = float4(Radiance, 1);
 }

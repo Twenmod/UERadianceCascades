@@ -42,6 +42,11 @@ void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTra
 
 void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources)
 {
+	if (RC::CVarScreenspaceEnabled.GetValueOnRenderThread() == 0)
+	{
+		return;
+	}
+
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
 
@@ -122,9 +127,11 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		RGParams->SceneTextures.GBufferCTexture = SceneTex.GBufferC;
 		RGParams->SceneTextures.GBufferDTexture = SceneTex.GBufferD;
 		RGParams->SceneTextures.GBufferETexture = SceneTex.GBufferE;
+		//RGParams->SceneTextures.GBufferFTexture = SceneTex.GBufferF;
+		//RGParams->SceneTextures.GBufferSGGXTexture = SceneTex.GBufferSGGX;
 		
 		RGParams->View = ViewInfo.ViewUniformBuffer;
-		//RGParams->LightGridPacked = ViewInfo.RayTracingLightGridUniformBuffer;
+		RGParams->RaytracingLightGridData = ViewInfo.RayTracingLightGridUniformBuffer;
 		RGParams->SceneDepth = ViewInfo.GetSceneTextures().Depth.Resolve;
 		auto SceneUniformBuffer = GetSceneUniformBufferRef(GraphBuilder, ViewInfo);
 		TRDGUniformBufferRef<FNaniteRayTracingUniformParameters> NaniteRayTracingUniformBuffer =
