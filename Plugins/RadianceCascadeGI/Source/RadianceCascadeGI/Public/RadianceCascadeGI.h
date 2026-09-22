@@ -26,6 +26,7 @@ public:
 
 	FWorldSpaceRCGi WorldSpaceRC;
 	FDelegateHandle WatcherHandle;
+	FDelegateHandle RTPassHandle;
 	FDelegateHandle GIPassHandle;
 	FString WatchedShaderDir;
 	bool bRecompilePending = false;

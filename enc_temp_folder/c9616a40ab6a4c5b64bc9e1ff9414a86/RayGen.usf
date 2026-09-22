@@ -1,0 +1,56 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneTextureParameters.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+
+RaytracingAccelerationStructure TLAS;
+//RWByteAddressBuffer RWHashTable;
+RWTexture2D<float4> Output;
+//uint HashTableSize;
+Texture2D SceneDepth;
+
+RAY_TRACING_ENTRY_RAYGEN(MainRG)
+{
+	uint2 PixelCoord = DispatchRaysIndex().xy + View.ViewRectMin.xy;
+	float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
+
+FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
+	if (GBuffer.ShadingModelID == SHADINGMODELID_UNLIT)
+	{
+		return;
+	}
+
+	float DeviceZ = SceneDepth.Load(int3(PixelCoord, 0)).r;
+	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
+	float3 N = GBuffer.WorldNormal;
+
+
+float3 RayDir = N;
+	RayDir *= sign(dot(RayDir, N));
+
+RayDesc Ray;
+	Ray.Origin = TranslatedWorldPos + N * 0.5;
+	Ray.Direction =
+RayDir;
+	Ray.TMin = 0.0;
+	Ray.TMax = 100000.0;
+
+	FPackedMaterialClosestHitPayload Payload = (FPackedMaterialClosestHitPayload)0;
+	//Payload.SetEnableSkyLightContribution();
+
+	TraceRay(TLAS, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, RAY_TRACING_MASK_OPAQUE,
+	         RAY_TRACING_SHADER_SLOT_MATERIAL, RAY_TRACING_NUM_SHADER_SLOTS,
+	         0 /*MissShaderIndex*/, Ray, Payload);
+
+	if (!Payload.IsHit())
+	{
+		return;
+	}
+
+float HitT = Payload.HitT;
+	//float3 BaseColor = Payload.GetBaseColor();
+	//float3 HitNormal = Payload.GetWorldNormal();
+	//float3 Radiance = Payload.GetRadiance(); // emissive
+	//float3 HitPos = Ray.Origin + Ray.Direction * HitT;
+
+    Output[PixelCoord] = float4(1,0,0,1);
+}

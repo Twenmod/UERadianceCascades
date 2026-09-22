@@ -8,7 +8,9 @@
 #include "BlueNoise.h"
 #include "ShaderCompilerCore.h"
 #include "DeferredShadingRenderer.h"
-
+#include "RayTracingPayloadType.h"
+#include "RayTracingShaderBindingLayout.h"
+#include "RayTracing/RayTracingLighting.h"
 //static constexpr int MAX_CASCADES = 32;
 
 class FWorldSpaceRCGi
@@ -16,8 +18,7 @@ class FWorldSpaceRCGi
 public:
 	FWorldSpaceRCGi();
 
-	void AnyRayTracingPassEnabled(bool& bOutAnyRayTracingPassEnabled) {};
-	void PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders) {};
+	void PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
 	void RenderDiffuseIndirectLight(const FScene& Scene,const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources);
 
 	bool bInitialized = false;
@@ -67,3 +68,48 @@ public:
 	}
 };
 
+
+
+class FWorldSpaceRCRaygen : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCRaygen)
+	SHADER_USE_ROOT_PARAMETER_STRUCT(FWorldSpaceRCRaygen, FGlobalShader)
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters,)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneUniformParameters, Scene)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SceneDepth)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
+	/*	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, LightGridPacked)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWByteAddressBuffer, RWHashTable)
+		SHADER_PARAMETER(uint32, HashTableSize)*/
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
+	END_SHADER_PARAMETER_STRUCT()
+
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Params)
+	{
+		return ShouldCompileRayTracingShadersForProject(Params.Platform);
+	}
+
+	// REQUIRED. This is what binds you to the scene's material hit groups.
+	static ERayTracingPayloadType GetRayTracingPayloadType(const int32 PermutationId)
+	{
+		return ERayTracingPayloadType::RayTracingMaterial;
+	}
+
+	static const FShaderBindingLayout* GetShaderBindingLayout(const FShaderPermutationParameters& Parameters)
+	{
+		return RayTracing::GetShaderBindingLayout(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Params,
+		FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Params, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("ENABLE_MATERIALS"), 1);
+		OutEnvironment.SetDefine(TEXT("ENABLE_TWO_SIDED_GEOMETRY"), 1);
+		OutEnvironment.SetDefine(TEXT("SUPPORT_CONTACT_SHADOWS"), 1);
+	}
+};

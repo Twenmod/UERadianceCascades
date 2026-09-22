@@ -83,6 +83,7 @@ float ProjectPointLine(float3 LineStart, float3 LineEnd, float3 Point, float Fal
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
+
 	uint2 PixelId = DispatchThreadId;
 	
 	// Check that we are in scope

@@ -25,6 +25,9 @@ void FRadianceCascadeGIModule::StartupModule()
 		*GEngineIni,
 		ECVF_SetByProjectSetting);
 
+
+	RTPassHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing()
+		.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::PrepareRayTracing);
 	GIPassHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
 		.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::RenderDiffuseIndirectLight);
 
@@ -47,7 +50,8 @@ void FRadianceCascadeGIModule::ShutdownModule()
 {
 	FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
 		.Remove(GIPassHandle);
-
+	FGlobalIlluminationPluginDelegates::PrepareRayTracing()
+		.Remove(RTPassHandle);
 
 #if WITH_EDITOR
 	if (WatcherHandle.IsValid())
