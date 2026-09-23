@@ -51,7 +51,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	float4 DirectionPDF = CosineSampleHemisphere(
 		R2Sequence(PixelCoord.x + PixelCoord.y * View.BufferSizeAndInvSize.x, float2(0, 0)), N);
-	Ray.Direction = DirectionPDF.xyz;
+	Ray.Direction = reflect(normalize(TranslatedWorldPos), N);//DirectionPDF.xyz;
 
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,

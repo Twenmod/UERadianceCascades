@@ -101,5 +101,5 @@ float Intensity;
 	Output[SceneColorViewport_ViewportMin + DispatchThreadId] = SceneColor + float4(ProbeRGB * PI * Intensity * GBuffer.DiffuseColor, 1.0);
 
 	// Just debug light
-	// Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeColor.rgb,1.0);
+    //Output[SceneColorViewport_ViewportMin + DispatchThreadId] = float4(ProbeRGB.rgb, 1.0);
 }

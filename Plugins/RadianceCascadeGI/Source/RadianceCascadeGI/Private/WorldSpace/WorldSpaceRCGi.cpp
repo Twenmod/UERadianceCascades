@@ -42,11 +42,6 @@ void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTra
 
 void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources)
 {
-	if (RC::CVarScreenspaceEnabled.GetValueOnRenderThread() == 0)
-	{
-		return;
-	}
-
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
 
@@ -80,37 +75,36 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		AddClearUAVPass(GraphBuilder, HashTableUAV, 0);
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 
-		//// Set the shader parameters
-		//FWorldSpaceRCShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FWorldSpaceRCShader::FParameters>();
+		// Set the shader parameters
+		FWorldSpaceRCShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FWorldSpaceRCShader::FParameters>();
 
-		//// Input is the SceneColor from PostProcess Material Inputs
-		//PassParameters->View = ViewInfo.ViewUniformBuffer;
-		//PassParameters->SceneTextures = SceneTextureParams;
-		//
-		//PassParameters->HashTable = GraphBuilder.CreateSRV(HashTable);
-		//PassParameters->RWHashTable = HashTableUAV;
-		//PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
-		//PassParameters->HashTableSize = HashTableSize;
+		// Input is the SceneColor from PostProcess Material Inputs
+		PassParameters->View = ViewInfo.ViewUniformBuffer;
+		PassParameters->SceneTextures = SceneTextureParams;
+		
+		PassParameters->HashTable = HashTableSRV;
+		PassParameters->RWHashTable = HashTableUAV;
+		PassParameters->HashTableSize = HashTableSize;
 
-		//// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
-		//PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-
-
-		//// Create UAV from Target Texture
-		//PassParameters->Output =
+		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
+		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 
 
-		//// Set Compute Shader and execute
-		//FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+		// Create UAV from Target Texture
+		PassParameters->Output = Output;
 
-		//TShaderMapRef<FWorldSpaceRCShader> ComputeShader(GlobalShaderMap);
 
-		//FComputeShaderUtils::AddPass(
-		//	GraphBuilder,
-		//	RDG_EVENT_NAME("World Space RC Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
-		//	ComputeShader,
-		//	PassParameters,
-		//	GroupCount);
+		// Set Compute Shader and execute
+		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize, FComputeShaderUtils::kGolden2DGroupSize);
+
+		TShaderMapRef<FWorldSpaceRCShader> ComputeShader(GlobalShaderMap);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("World Space RC Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
+			ComputeShader,
+			PassParameters,
+			GroupCount);
 
 
 		//Trace the scene

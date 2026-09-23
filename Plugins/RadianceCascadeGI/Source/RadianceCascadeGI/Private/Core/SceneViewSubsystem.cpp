@@ -7,7 +7,7 @@
 
 void USceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	//ScreenSpaceExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
+	ScreenSpaceExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
 	//WorldSpaceExtension = FSceneViewExtensions::NewExtension<FWorldSpaceRCGi>();
 }
 
