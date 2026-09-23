@@ -6,9 +6,15 @@
 #include "/Engine/Private/RayTracing/RayTracingLightingCommon.ush"
 #include "/Engine/Private/Random.ush"
 #include "/Engine/Private/MonteCarlo.ush"
+#include "RCHashTable.ush"
+#include "RCCommon.ush"
 RaytracingAccelerationStructure TLAS;
 RWTexture2D<float4> Output;
 Texture2D SceneDepth;
+
+RWStructuredBuffer<uint4> TotalRadiance;
+RWStructuredBuffer<uint> Weights;
+uint DirectionCount;
 
 #define R2_G  1.32471795724474602596f
 #define R2_A1 0.754877666246692760050f  // 1 / g
@@ -18,6 +24,44 @@ Texture2D SceneDepth;
 float2 R2Sequence(uint n, float2 Offset)
 {
 	return frac(0.5f + float2(R2_A1, R2_A2) * (float)n + Offset);
+}
+static const float INV_TWO_PI = 0.15915494309189535;
+
+float NextFloatDown(float x)
+{
+    return asfloat(asuint(x) - 1u);
+}
+
+float2 EncodeDir(float3 d)
+{
+    return float2(frac(atan2(d.y, d.x) * INV_TWO_PI), (d.z + 1.0) * 0.5);
+}
+
+uint2 QuantizeDir(float2 uv, uint2 gridSize)
+{
+    float2 s = float2(NextFloatDown(gridSize.x), NextFloatDown(gridSize.y));
+    return (uint2) (uv * s);
+}
+
+uint Part1By1(uint x)
+{
+    x &= 0x0000FFFFu;
+    x = (x ^ (x << 8)) & 0x00FF00FFu;
+    x = (x ^ (x << 4)) & 0x0F0F0F0Fu;
+    x = (x ^ (x << 2)) & 0x33333333u;
+    x = (x ^ (x << 1)) & 0x55555555u;
+    return x;
+}
+
+uint EncodeMorton2(uint2 v)
+{
+    return Part1By1(v.x) | (Part1By1(v.y) << 1);
+}
+
+uint DirToLinear(float3 dir)
+{
+    uint2 g = uint2(DirectionCount << 1, DirectionCount);
+    return EncodeMorton2(QuantizeDir(EncodeDir(dir), g) % g);
 }
 
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
@@ -78,6 +122,24 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	{
 		return;
 	}
+
+	//Split ray into probe
+	//int Cascade = ; // TODO: find actual cascade and output in that one
+	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
+	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
+    
+	uint ProbeIndex = 0;
+	if (HashTableFind(MakeProbeKey(WorldPos,CameraPos),ProbeIndex))
+	{
+		uint Index = ProbeIndex * DirectionCount + DirToLinear(DirectionPDF.xyz);
+		float3 Rad = Radiance * DirectionPDF.w;
+        //Pack to uints to use atomics
+		InterlockedAdd(TotalRadiance[Index].x, PackFloatUnsigned(Rad.x));
+		InterlockedAdd(TotalRadiance[Index].y, PackFloatUnsigned(Rad.y));
+		InterlockedAdd(TotalRadiance[Index].z, PackFloatUnsigned(Rad.z));
+        InterlockedAdd(Weights[Index], 1);
+	}
+
 
 
 	Output[PixelCoord] += float4(Radiance * DirectionPDF.w, 1);

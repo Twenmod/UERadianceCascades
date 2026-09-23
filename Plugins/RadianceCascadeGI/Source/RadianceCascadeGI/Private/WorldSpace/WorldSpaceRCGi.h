@@ -25,6 +25,8 @@ public:
 	std::atomic<bool> bResetTable{ false };
 	TUniquePtr<FAutoConsoleCommand> ResetCommand;
 	TRefCountPtr<FRDGPooledBuffer> CascadeHashTable;
+	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
+	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
 	//TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
 	//TRefCountPtr<FRDGPooledBuffer> BitWeightLUTBuffer;
 
@@ -79,9 +81,12 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float>, SceneDepth)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
-		/*SHADER_PARAMETER_RDG_BUFFER_UAV(RWByteAddressBuffer, RWHashTable)
-		SHADER_PARAMETER(uint32, HashTableSize)*/
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
+		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(uint32, DirectionCount)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
 	END_SHADER_PARAMETER_STRUCT()

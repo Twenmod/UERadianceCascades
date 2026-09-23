@@ -25,6 +25,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 }
 
 static constexpr uint32 HashTableSize = 4096;
+static constexpr uint32 DirectionCount = 16;
 
 void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
@@ -51,8 +52,12 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 	{
 		//Create Hashmaps for probes
 		bInitialized = true;
-		FRDGBufferDesc Desc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), HashTableSize);
-		AllocatePooledBuffer(Desc, CascadeHashTable, TEXT("RC Cascade Hashmap"));
+		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), HashTableSize);
+		AllocatePooledBuffer(HTDesc, CascadeHashTable, TEXT("RC Cascade Hashmap"));
+		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32)*4, HashTableSize*DirectionCount);
+		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer, TEXT("RC Cascade Probes Total Radiance and transmittance"));
+		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), HashTableSize*DirectionCount);
+		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer, TEXT("RC Cascade Probes Weight"));
 	}
 		
 	if (!IsRayTracingEnabled() || !ViewInfo.HasRayTracingScene())
@@ -107,12 +112,14 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			GroupCount);
 
 
-		//Trace the scene
+		//Trace the scene per pixel and split into probes
 		TShaderMapRef<FWorldSpaceRCRaygen> RayGenShader(GlobalShaderMap);
 		FWorldSpaceRCRaygen::FParameters* RGParams = GraphBuilder.AllocParameters<FWorldSpaceRCRaygen::FParameters>();
 		RGParams->Output = Output;
-		//RGParams->HashTableSize = HashTableSize;
-		//RGParams->RWHashTable = HashTableUAV;
+		RGParams->HashTableSize = HashTableSize;
+		RGParams->HashTable = HashTableSRV;
+		RGParams->TotalRadiance = GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalBuffer(ProbeRadianceBuffer));
+		RGParams->Weights = GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer));
 		RGParams->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
 		const FSceneTextures& SceneTex = ViewInfo.GetSceneTextures();
 		RGParams->SceneTextures.SceneDepthTexture = SceneTex.Depth.Resolve;

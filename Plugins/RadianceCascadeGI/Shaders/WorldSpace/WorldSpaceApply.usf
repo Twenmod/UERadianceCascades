@@ -11,56 +11,9 @@
 RWTexture2D<float4> Output;
 
 StructuredBuffer<uint64_t> Probes;
-RWStructuredBuffer<uint64_t> RWProbes;
-
-
-
-
-
+StructuredBuffer<uint4> Probes;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
-
-
-//Hash to color debug
-uint MurmurFinalize32(uint h)
-{
-    h ^= h >> 16;
-    h *= 0x85ebca6bu;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35u;
-    h ^= h >> 16;
-    return h;
-}
-
-uint Hash64(uint Lo, uint Hi)
-{
-    uint h = MurmurFinalize32(Lo);
-    h ^= MurmurFinalize32(Hi) + 0x9E3779B9u + (h << 6) + (h >> 2);
-    return MurmurFinalize32(h);
-}
-
-float3 HSVtoRGB(float3 c)
-{
-    float3 p = abs(frac(c.xxx + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
-    return c.z * lerp(1.0.xxx, saturate(p - 1.0), c.y);
-}
-
-float3 ColorFromHash(uint Lo, uint Hi)
-{
-    uint h = Hash64(Lo, Hi);
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
-}
-float3 ColorFromHash1(uint h1)
-{
-    uint h = h1;
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
-}
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -83,12 +36,12 @@ float3 ColorFromHash1(uint h1)
     float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
     float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
     
-	uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+    uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
     uint Index = 0;
     bool hasKey = HashTableFind(Key, Index);
-	if (!hasKey)
-	{
-	    HashTableAdd(Key, Index);
+    if (!hasKey)
+    {
+        HashTableAdd(Key, Index);
         hasKey = true;
     }
     uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);

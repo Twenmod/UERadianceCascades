@@ -8,6 +8,8 @@ StructuredBuffer<uint64_t> HashTable;
 RWStructuredBuffer<uint64_t> RWHashTable;
 uint HashTableSize;
 
+
+
 // Returns true if key is added for the first time.
 // Index input is the first hash table bucket to look in.
 // Index output is the hash table bucket this key is stored in.
@@ -87,4 +89,71 @@ bool HashTableFind(uint64_t Key, inout uint Index)
     }
 
     return true;
+}
+
+
+//Layout of the key,
+#define KEY_BITS_X      19
+#define KEY_BITS_Y      19
+#define KEY_BITS_Z      19
+#define KEY_BITS_LEVEL   4
+#define KEY_BITS_VALID   1
+
+#define KEY_SHIFT_X      0
+#define KEY_SHIFT_Y     (KEY_SHIFT_X     + KEY_BITS_X)
+#define KEY_SHIFT_Z     (KEY_SHIFT_Y     + KEY_BITS_Y)
+#define KEY_SHIFT_LEVEL (KEY_SHIFT_Z     + KEY_BITS_Z)
+#define KEY_SHIFT_VALID (KEY_SHIFT_LEVEL  + KEY_BITS_LEVEL)
+#define KEY_BITS_TOTAL  (KEY_SHIFT_VALID + KEY_BITS_VALID)
+
+#if KEY_BITS_TOTAL > 64
+    #error "Probe key layout exceeds 64 bits"
+#endif
+
+//Limits from above sizes
+static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
+
+static const float kBaseVoxelSize = 32.0;
+static const float kLevelBaseDist = 200.0;
+
+uint64_t KeyPack(uint Value, uint Shift, uint Bits)
+{
+    return (uint64_t) (Value & ((1u << Bits) - 1u)) << Shift;
+}
+
+uint ComputeLevel(float3 WorldPos, float3 CameraPos)
+{
+    float3 Distance = abs(WorldPos - CameraPos);
+    float Radius = max(Distance.x, max(Distance.y, Distance.z));
+    float L = log2(max(Radius / kLevelBaseDist, 1.0)); // base 2
+    return (uint) clamp(floor(L), 0.0, (float) kMaxLevel);
+}
+
+float LevelVoxelSize(uint Level)
+{
+    return kBaseVoxelSize * (float) (1u << Level);
+}
+
+uint NormalToFace(float3 N)
+{
+    float3 A = abs(N);
+    uint Axis = (A.x >= A.y) ? ((A.x >= A.z) ? 0u : 2u)
+                             : ((A.y >= A.z) ? 1u : 2u);
+    float S = (Axis == 0u) ? N.x : ((Axis == 1u) ? N.y : N.z);
+    return Axis * 2u + (S < 0.0 ? 1u : 0u);
+}
+
+uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
+{
+    uint Level = ComputeLevel(WorldPos, CameraPos);
+    float VS = LevelVoxelSize(Level);
+
+    //move along normal with voxel size
+    int3 Cell = int3(floor((WorldPos / VS) - 0.5));
+
+    return KeyPack((uint) Cell.x, KEY_SHIFT_X, KEY_BITS_X)
+         | KeyPack((uint) Cell.y, KEY_SHIFT_Y, KEY_BITS_Y)
+         | KeyPack((uint) Cell.z, KEY_SHIFT_Z, KEY_BITS_Z)
+         | KeyPack(Level, KEY_SHIFT_LEVEL, KEY_BITS_LEVEL)
+         | KeyPack(1u, KEY_SHIFT_VALID, KEY_BITS_VALID);
 }

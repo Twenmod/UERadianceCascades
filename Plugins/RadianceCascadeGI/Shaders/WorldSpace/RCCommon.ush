@@ -1,0 +1,12 @@
+#define FLOAT_ATOMIC_PRECISION 0.00001
+#define FLOAT_ATOMIC_INV_PRECISION (1/FLOAT_ATOMIC_PRECISION)
+
+uint PackFloatUnsigned(float Value)
+{
+	return Value*FLOAT_ATOMIC_INV_PRECISION;
+}
+
+float UnpackFloatUnsigned(uint Packed)
+{
+    return Packed * FLOAT_ATOMIC_PRECISION;
+}
