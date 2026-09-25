@@ -10,6 +10,7 @@
 
 IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCShader, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceRC.usf", "MainCS", SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCRaygen, "/Plugins/RadianceCascadeGI/WorldSpace/RayGen.usf", "MainRG", SF_RayGen);
+IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCApplyShader, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceApply.usf", "MainCS", SF_Compute);
 
 
 
@@ -54,9 +55,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		bInitialized = true;
 		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), HashTableSize);
 		AllocatePooledBuffer(HTDesc, CascadeHashTable, TEXT("RC Cascade Hashmap"));
-		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32)*4, HashTableSize*DirectionCount);
+		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32)*4, HashTableSize*(DirectionCount*2*DirectionCount));
 		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer, TEXT("RC Cascade Probes Total Radiance and transmittance"));
-		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), HashTableSize*DirectionCount);
+		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), HashTableSize* (DirectionCount * 2 * DirectionCount));
 		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer, TEXT("RC Cascade Probes Weight"));
 	}
 		
@@ -78,7 +79,18 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto HashTableUAV = GraphBuilder.CreateUAV(HashTable);
 		auto HashTableSRV = GraphBuilder.CreateSRV(HashTable);
 		AddClearUAVPass(GraphBuilder, HashTableUAV, 0);
+
+		//Clear Radiance
+		auto RadianceBuffer = GraphBuilder.RegisterExternalBuffer(ProbeRadianceBuffer);
+		auto RadianceUAV = GraphBuilder.CreateUAV(RadianceBuffer);
+		AddClearUAVPass(GraphBuilder, RadianceUAV, 0);
+		//And weights
+		auto WeightBuffer = GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer);
+		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
+		AddClearUAVPass(GraphBuilder, WeightUAV, 0);
+
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
+
 
 		// Set the shader parameters
 		FWorldSpaceRCShader::FParameters* PassParameters = GraphBuilder.AllocParameters<FWorldSpaceRCShader::FParameters>();
@@ -94,7 +106,6 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
 
-
 		// Create UAV from Target Texture
 		PassParameters->Output = Output;
 
@@ -106,21 +117,23 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
-			RDG_EVENT_NAME("World Space RC Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
+			RDG_EVENT_NAME("RC Gather pass %dx%d", PassViewSize.X, PassViewSize.Y),
 			ComputeShader,
 			PassParameters,
 			GroupCount);
 
 
 		//Trace the scene per pixel and split into probes
+
 		TShaderMapRef<FWorldSpaceRCRaygen> RayGenShader(GlobalShaderMap);
 		FWorldSpaceRCRaygen::FParameters* RGParams = GraphBuilder.AllocParameters<FWorldSpaceRCRaygen::FParameters>();
 		RGParams->Output = Output;
 		RGParams->HashTableSize = HashTableSize;
 		RGParams->HashTable = HashTableSRV;
-		RGParams->TotalRadiance = GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalBuffer(ProbeRadianceBuffer));
-		RGParams->Weights = GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer));
+		RGParams->TotalRadiance = RadianceUAV;
+		RGParams->Weights = WeightUAV;
 		RGParams->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
+		RGParams->DirectionCount = DirectionCount;
 		const FSceneTextures& SceneTex = ViewInfo.GetSceneTextures();
 		RGParams->SceneTextures.SceneDepthTexture = SceneTex.Depth.Resolve;
 		RGParams->SceneTextures.GBufferATexture = SceneTex.GBufferA;
@@ -164,5 +177,31 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				RHICmdList.RayTraceDispatch(Pipeline, RayGenShader.GetRayTracingShader(), SBT,
 					GlobalResources, PassViewSize.X, PassViewSize.Y);
 			});
+
+
+		//Output
+				// Set the shader parameters
+		FWorldSpaceRCApplyShader::FParameters* ApplyPassParameters = GraphBuilder.AllocParameters<FWorldSpaceRCApplyShader::FParameters>();
+
+		// Input is the SceneColor from PostProcess Material Inputs
+		ApplyPassParameters->View = ViewInfo.ViewUniformBuffer;
+		ApplyPassParameters->SceneTextures = SceneTextureParams;
+		ApplyPassParameters->HashTable = HashTableSRV;
+		ApplyPassParameters->HashTableSize = HashTableSize;
+		ApplyPassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+		ApplyPassParameters->DirectionCount = DirectionCount;
+		ApplyPassParameters->ProbeRadiance = GraphBuilder.CreateSRV(RadianceBuffer);
+		ApplyPassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
+		ApplyPassParameters->Output = Output;
+
+		TShaderMapRef<FWorldSpaceRCApplyShader> ApplyCS(GlobalShaderMap);
+
+		FComputeShaderUtils::AddPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("RC Applying Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
+			ApplyCS,
+			ApplyPassParameters,
+			GroupCount);
+
 	}
 }

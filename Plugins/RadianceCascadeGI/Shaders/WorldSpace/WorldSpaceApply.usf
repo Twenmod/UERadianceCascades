@@ -5,17 +5,18 @@
 
 #include "RCHashTable.ush"
 #include "/Engine/Private/RayTracing/RayTracingCommon.ush"
-
+#include "RCCommon.ush"
 
 // Shader parameters
 RWTexture2D<float4> Output;
 
-StructuredBuffer<uint64_t> Probes;
-StructuredBuffer<uint4> Probes;
+StructuredBuffer<uint4> ProbeRadiance;
+StructuredBuffer<uint> ProbeWeights;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
-[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)] 
+void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
 	
     uint2 PixelId = DispatchThreadId;
@@ -38,17 +39,25 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
     
     uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
     uint Index = 0;
-    bool hasKey = HashTableFind(Key, Index);
-    if (!hasKey)
+    if (HashTableFind(Key, Index))
     {
-        HashTableAdd(Key, Index);
-        hasKey = true;
+        float3 TotalRadiance = 0;
+        uint Total = 0;
+        //Dumbly add all directions
+        for (uint i = 0; i < BinsPerProbe(); ++i)
+        {
+            uint BuffIndex = Index * BinsPerProbe() + i;
+            uint Weight = ProbeWeights[BuffIndex];
+            if (Weight == 0)
+            {
+	            continue;
+            }
+            uint4 Radiance = ProbeRadiance[BuffIndex];
+            float3 FloatRad = float3(UnpackFloatUnsigned(Radiance.x), UnpackFloatUnsigned(Radiance.y), UnpackFloatUnsigned(Radiance.z));
+        	TotalRadiance += FloatRad / float(Weight);
+            Total++;
+        }
+        FGBufferData GBufferData = GetGBufferData(BufferUV);
+        Output[PixelId] += float4(Total ? (TotalRadiance / float(Total))*GBufferData.BaseColor : 0, 1);
     }
-    uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
-    uint Hi = (uint32_t) (Key >> 32);
-    float3 Color = ColorFromHash(Lo, Hi);
-
-    //Debug visualisation of the HT
-//	Output[PixelId] = float4(hasKey && Index < HashTableSize ? Color : float3(0,0,0), 1);
-
 }
