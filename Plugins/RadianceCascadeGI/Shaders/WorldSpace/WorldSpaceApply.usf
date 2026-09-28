@@ -12,8 +12,41 @@ RWTexture2D<float4> Output;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
+uint DisplayCascade;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
+
+
+
+uint Hash64(uint Lo, uint Hi)
+{
+    uint h = MurmurFinalize32(Lo);
+    h ^= MurmurFinalize32(Hi) + 0x9E3779B9u + (h << 6) + (h >> 2);
+    return MurmurFinalize32(h);
+}
+
+float3 HSVtoRGB(float3 c)
+{
+    float3 p = abs(frac(c.xxx + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    return c.z * lerp(1.0.xxx, saturate(p - 1.0), c.y);
+}
+
+float3 ColorFromHash(uint Lo, uint Hi)
+{
+    uint h = Hash64(Lo, Hi);
+    float Hue = (h & 0xFFFFu) / 65535.0;
+    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
+    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
+    return HSVtoRGB(float3(Hue, Sat, Val));
+}
+float3 ColorFromHash1(uint h1)
+{
+    uint h = h1;
+    float Hue = (h & 0xFFFFu) / 65535.0;
+    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
+    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
+    return HSVtoRGB(float3(Hue, Sat, Val));
+}
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)] 
 void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
@@ -38,8 +71,13 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
     
     uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+
+
+    ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+    uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> DisplayCascade, KeyData.Level);
+
     uint Index = 0;
-    if (HashTableFind(Key, Index))
+    if (HashTableFind(CascadeKey, Index, DisplayCascade))
     {
         float3 TotalRadiance = 0;
         uint Total = 0;
@@ -59,5 +97,18 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
         }
         FGBufferData GBufferData = GetGBufferData(BufferUV);
         Output[PixelId] += float4(Total ? (TotalRadiance / float(Total))*GBufferData.BaseColor : 0, 1);
+
+            //Debug visualisation of the HT
+        uint Lo = (uint32_t) (CascadeKey & 0xFFFFFFFFull);
+        uint Hi = (uint32_t) (CascadeKey >> 32);
+        float3 Color = ColorFromHash(Lo, Hi);
+
+        Output[PixelId] = float4(Color, 1);
     }
+if (Index < HashTableSize-1 && Index > 0)
+{
+        float3 Color = ColorFromHash1(MurmurFinalize32(Index));
+        //Output[PixelId] = float4(Color, 1);
+
+}
 }

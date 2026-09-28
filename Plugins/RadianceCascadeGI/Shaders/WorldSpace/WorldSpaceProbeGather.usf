@@ -18,50 +18,8 @@ RWStructuredBuffer<uint> ActiveCounter;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
-StructuredBuffer<uint64_t> HashTable;
-RWStructuredBuffer<uint64_t> RWHashTable;
-uint HashTableSize;
-
 //Hash to color debug
-uint MurmurFinalize32(uint h)
-{
-    h ^= h >> 16;
-    h *= 0x85ebca6bu;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35u;
-    h ^= h >> 16;
-    return h;
-}
 
-uint Hash64(uint Lo, uint Hi)
-{
-    uint h = MurmurFinalize32(Lo);
-    h ^= MurmurFinalize32(Hi) + 0x9E3779B9u + (h << 6) + (h >> 2);
-    return MurmurFinalize32(h);
-}
-
-float3 HSVtoRGB(float3 c)
-{
-    float3 p = abs(frac(c.xxx + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
-    return c.z * lerp(1.0.xxx, saturate(p - 1.0), c.y);
-}
-
-float3 ColorFromHash(uint Lo, uint Hi)
-{
-    uint h = Hash64(Lo, Hi);
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
-}
-float3 ColorFromHash1(uint h1)
-{
-    uint h = h1;
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
-}
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
@@ -85,26 +43,16 @@ float3 ColorFromHash1(uint h1)
     
 	uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
 	//Index to keep things seperate avoiding conflicts
-	uint Index = MurmurFinalize32(uint(Key) ^ uint(Key >> 32));
+    uint Index = 0;
+    //MurmurFinalize32(uint(Key) ^ uint(Key >> 32));
 
-    HashTableData Table = {HashTable, RWHashTable, HashTableSize};
-
-    bool hasKey = HashTableFind(Key, Index, Table);
-	if (!hasKey)
-	{
-		//Add to table
-	    HashTableAdd(Key, Index, Table);
-        //Add to active probes for next passes
-		uint Counter;
-        InterlockedAdd(ActiveCounter[0], 1, Counter);
-        ActiveProbes[Counter] = Index;
-
-    }
-    ////Debug visualisation of the HT
-    //uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
-    //uint Hi = (uint32_t) (Key >> 32);
-    //float3 Color = ColorFromHash(Lo, Hi);
-
-    //	Output[PixelId] = float4(Color, 1);
+		//Try add to table
+        if (HashTableAdd(Key, Index, 0))
+        {
+	        //Add to active probes for next passes
+	        uint Counter;
+	        InterlockedAdd(ActiveCounter[0], 1, Counter);
+	        ActiveProbes[Counter] = Index;
+        }
 
 }

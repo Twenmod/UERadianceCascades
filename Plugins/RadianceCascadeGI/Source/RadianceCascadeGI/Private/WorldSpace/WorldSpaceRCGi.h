@@ -24,7 +24,7 @@ public:
 	bool bInitialized = false;
 	std::atomic<bool> bResetTable{ false };
 	TUniquePtr<FAutoConsoleCommand> ResetCommand;
-	TArray<TRefCountPtr<FRDGPooledBuffer>> HashTableCascades;
+	TRefCountPtr<FRDGPooledBuffer> HashTableCascade;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
 	TArray<TRefCountPtr<FRDGPooledBuffer>> ActiveProbes;
@@ -50,7 +50,6 @@ public:
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
@@ -83,13 +82,14 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, PrevHashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveCounter)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
+		RDG_BUFFER_ACCESS(IndirectArgsBuffer, ERHIAccess::IndirectArgs)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(uint32, Cascade)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -173,6 +173,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, DirectionCount)
+		SHADER_PARAMETER(uint32, DisplayCascade)
 
 	END_SHADER_PARAMETER_STRUCT()
 

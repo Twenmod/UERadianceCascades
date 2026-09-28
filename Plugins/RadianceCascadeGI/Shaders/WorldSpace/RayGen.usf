@@ -86,12 +86,12 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	}
 
 	//Split ray into probe
-	//int Cascade = ; // TODO: find actual cascade and output in that one
+	int Cascade = 0; // TODO: find actual cascade and output in that one
 	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
 	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
     
 	uint ProbeIndex = 0;
-	if (HashTableFind(MakeProbeKey(WorldPos,CameraPos),ProbeIndex))
+	if (HashTableFind(MakeProbeKey(WorldPos,CameraPos),ProbeIndex, Cascade))
 	{
 		uint Index = ProbeIndex * BinsPerProbe() + DirToLinear(DirectionPDF.xyz);
 		float3 Rad = Radiance / DirectionPDF.w;
