@@ -29,7 +29,8 @@ uint Cascade;
 
     uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
     //Index to keep things seperate avoiding conflicts
-    uint Index = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
+    uint Index = 0;
+    //MurmurFinalize32(uint(HighKey) ^ uint(HighKey >> 32));
     if (HashTableAdd(HighKey, Index, Cascade))
     {
 	    uint Counter;

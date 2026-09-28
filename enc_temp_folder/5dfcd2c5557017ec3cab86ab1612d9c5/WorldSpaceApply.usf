@@ -76,8 +76,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     ProbeKeyInfo KeyData = UnpackProbeKey(Key);
     uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> DisplayCascade, KeyData.Level);
 
-    uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-    
+    uint Index = 0;
     if (HashTableFind(CascadeKey, Index, DisplayCascade))
     {
         float3 TotalRadiance = 0;

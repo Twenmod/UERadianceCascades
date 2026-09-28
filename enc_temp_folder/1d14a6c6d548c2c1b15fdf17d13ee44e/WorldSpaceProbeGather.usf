@@ -43,7 +43,8 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
     
 	uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
 	//Index to keep things seperate avoiding conflicts
-    uint Index = MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)));
+    uint Index = 0;
+    //MurmurFinalize32(uint(Key) ^ uint(Key >> 32));
 
 		//Try add to table
         if (HashTableAdd(Key, Index, 0))
