@@ -24,9 +24,12 @@ public:
 	bool bInitialized = false;
 	std::atomic<bool> bResetTable{ false };
 	TUniquePtr<FAutoConsoleCommand> ResetCommand;
-	TRefCountPtr<FRDGPooledBuffer> CascadeHashTable;
+	TArray<TRefCountPtr<FRDGPooledBuffer>> HashTableCascades;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
+	TArray<TRefCountPtr<FRDGPooledBuffer>> ActiveProbes;
+	TArray<TRefCountPtr<FRDGPooledBuffer>> ActiveProbeCounters;
+	
 	//TArray<TRefCountPtr<IPooledRenderTarget >> ProbeCascadeSliceMasks;
 	//TRefCountPtr<FRDGPooledBuffer> BitWeightLUTBuffer;
 
@@ -35,12 +38,12 @@ public:
 
 };
 
-class RADIANCECASCADEGI_API FWorldSpaceRCShader : public FGlobalShader
+class RADIANCECASCADEGI_API FWorldSpaceRCGather : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FWorldSpaceRCShader)
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCGather)
 
-	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCShader, FGlobalShader)
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCGather, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
@@ -49,14 +52,15 @@ public:
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
 		SHADER_PARAMETER(uint32, HashTableSize)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && ShouldCompileRayTracingShadersForProject(Parameters.Platform)
-			&& FDataDrivenShaderPlatformInfo::GetSupportsInlineRayTracing(Parameters.Platform);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	// Define environment variables used by compute shader
@@ -65,10 +69,44 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADS_X"), 8);
 		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 8);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
-		OutEnvironment.CompilerFlags.Add(CFLAG_InlineRayTracing);
 	}
 };
 
+class RADIANCECASCADEGI_API FWorldSpaceRCFillCascade : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCFillCascade)
+
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCFillCascade, FGlobalShader)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, PrevHashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveProbes)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveCounter)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
+		SHADER_PARAMETER(uint32, HashTableSize)
+	END_SHADER_PARAMETER_STRUCT()
+
+	// Basic shader initialization
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+	}
+
+	// Define environment variables used by compute shader
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), GroupCount);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 1);
+		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
+	}
+	static constexpr uint32 GroupCount = 64;
+};
 
 
 class FWorldSpaceRCRaygen : public FGlobalShader
@@ -118,12 +156,12 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 	}
 };
 
-class RADIANCECASCADEGI_API FWorldSpaceRCApplyShader : public FGlobalShader
+class RADIANCECASCADEGI_API FWorldSpaceRCApply : public FGlobalShader
 {
 public:
-	DECLARE_GLOBAL_SHADER(FWorldSpaceRCApplyShader)
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCApply)
 
-	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCApplyShader, FGlobalShader)
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCApply, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)

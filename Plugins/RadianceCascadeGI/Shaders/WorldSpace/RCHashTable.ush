@@ -1,19 +1,24 @@
 //Modified from Engine/Private/HashTable.ush
+
+//The chandra(paper's) implementation uses a smarter hashing thing which is especially nice when doing multibounce since it stays stable, but this is fine for now
+
 #pragma once
 
 #include "/Engine/Public/Platform.ush"
 
 // Linear probing hash table
-StructuredBuffer<uint64_t> HashTable;
-RWStructuredBuffer<uint64_t> RWHashTable;
-uint HashTableSize;
 
-
+struct HashTableData
+{
+    StructuredBuffer<uint64_t> Table;
+    RWStructuredBuffer<uint64_t> RWTable;
+    uint Size;
+};
 
 // Returns true if key is added for the first time.
 // Index input is the first hash table bucket to look in.
 // Index output is the hash table bucket this key is stored in.
-bool HashTableAdd(uint64_t Key, inout uint Index)
+bool HashTableAdd(uint64_t Key, inout uint Index, HashTableData Table)
 {
 	// Zero is reserved as invalid
     Key++;
@@ -21,32 +26,32 @@ bool HashTableAdd(uint64_t Key, inout uint Index)
 	// TODO v_mul_hi_u32 to avoid integer division
 	// ( Index * HashTableSize ) >> 32
 
-    Index = Index % HashTableSize;
+    Index = Index % Table.Size;
 
     LOOP
 	ALLOW_UAV_CONDITION
 
-    for (uint i = 0; i < HashTableSize; i++)
+    for (uint i = 0; i < Table.Size; i++)
     {
-        uint64_t StoredKey = RWHashTable[Index];
+        uint64_t StoredKey = Table.RWTable[Index];
         if (StoredKey != Key)
         {
             if (StoredKey != 0)
             {
                 Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
+                Index = Index >= Table.Size ? 0 : Index;
                 continue;
             }
 
             uint64_t PrevKey;
-            InterlockedCompareExchange(RWHashTable[Index], 0, Key, PrevKey);
+            InterlockedCompareExchange(Table.RWTable[Index], 0, Key, PrevKey);
 			
             if (PrevKey == 0)
                 return true;
             else if (PrevKey != Key)
             {
                 Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
+                Index = Index >= Table.Size ? 0 : Index;
                 continue;
             }
         }
@@ -60,25 +65,25 @@ bool HashTableAdd(uint64_t Key, inout uint Index)
 // Returns true if key is found.
 // Index input is the first hash table bucket to look in.
 // Index output is the hash table bucket this key is stored in if found.
-bool HashTableFind(uint64_t Key, inout uint Index)
+bool HashTableFind(uint64_t Key, inout uint Index, HashTableData Table)
 {
 	// Zero is reserved as invalid
     Key++;
 
-    Index = Index % HashTableSize;
+    Index = Index % Table.Size;
 
     LOOP
 	ALLOW_UAV_CONDITION
 
-    for (uint i = 0; i < HashTableSize; i++)
+    for (uint i = 0; i < Table.Size; i++)
     {
-        uint64_t StoredKey = HashTable[Index];
+        uint64_t StoredKey = Table.Table[Index];
         if (StoredKey != Key)
         {
             if (StoredKey != 0)
             {
                 Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
+                Index = Index >= Table.Size ? 0 : Index;
                 continue;
             }
 
@@ -106,9 +111,14 @@ bool HashTableFind(uint64_t Key, inout uint Index)
 #define KEY_SHIFT_VALID (KEY_SHIFT_LEVEL  + KEY_BITS_LEVEL)
 #define KEY_BITS_TOTAL  (KEY_SHIFT_VALID + KEY_BITS_VALID)
 
+//Half extend offset to keep cells positive
+#define SIGN_OFFSET (1 << (KEY_BITS_X -1))
+
 #if KEY_BITS_TOTAL > 64
     #error "Probe key layout exceeds 64 bits"
 #endif
+
+
 
 //Limits from above sizes
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
@@ -119,6 +129,12 @@ static const float kLevelBaseDist = 200.0;
 uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 {
     return (uint64_t) (Value & ((1u << Bits) - 1u)) << Shift;
+}
+
+uint KeyUnpack(uint64_t Key, uint Shift, uint Bits)
+{
+    uint64_t Mask = (1u << Bits)-1u;
+    return (uint) ((Key >> Shift) & Mask);
 }
 
 uint ComputeLevel(float3 WorldPos, float3 CameraPos)
@@ -143,17 +159,43 @@ uint NormalToFace(float3 N)
     return Axis * 2u + (S < 0.0 ? 1u : 0u);
 }
 
-uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
+uint64_t PackProbeKey(int3 Cell, uint Level)
 {
-    uint Level = ComputeLevel(WorldPos, CameraPos);
-    float VS = LevelVoxelSize(Level);
+    uint3 UintCell = uint3(Cell) + SIGN_OFFSET;
 
-    //move along normal with voxel size
-    int3 Cell = int3(floor((WorldPos / VS) - 0.5));
-
-    return KeyPack((uint) Cell.x, KEY_SHIFT_X, KEY_BITS_X)
-         | KeyPack((uint) Cell.y, KEY_SHIFT_Y, KEY_BITS_Y)
-         | KeyPack((uint) Cell.z, KEY_SHIFT_Z, KEY_BITS_Z)
+    return KeyPack(UintCell.x, KEY_SHIFT_X, KEY_BITS_X)
+         | KeyPack(UintCell.y, KEY_SHIFT_Y, KEY_BITS_Y)
+         | KeyPack(UintCell.z, KEY_SHIFT_Z, KEY_BITS_Z)
          | KeyPack(Level, KEY_SHIFT_LEVEL, KEY_BITS_LEVEL)
          | KeyPack(1u, KEY_SHIFT_VALID, KEY_BITS_VALID);
 }
+
+struct ProbeKeyInfo
+{
+    int3 Cell;
+    uint Level;
+    bool Valid;
+};
+ProbeKeyInfo UnpackProbeKey(uint64_t Key)
+{
+    ProbeKeyInfo Info;
+
+    Info.Cell.x = int(KeyUnpack(Key, KEY_SHIFT_X, KEY_BITS_X)) - SIGN_OFFSET;
+    Info.Cell.y = int(KeyUnpack(Key, KEY_SHIFT_Y, KEY_BITS_Y)) - SIGN_OFFSET;
+    Info.Cell.z = int(KeyUnpack(Key, KEY_SHIFT_Z, KEY_BITS_Z)) - SIGN_OFFSET;
+
+    Info.Level = KeyUnpack(Key, KEY_SHIFT_LEVEL, KEY_BITS_LEVEL);
+    Info.Valid = KeyUnpack(Key, KEY_SHIFT_VALID, KEY_BITS_VALID) != 0u;
+
+    return Info;
+}
+
+uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
+{
+    uint Level = ComputeLevel(WorldPos, CameraPos);
+    float VoxelSize = LevelVoxelSize(Level);
+    int3 Cell = int3(floor((WorldPos / VoxelSize) - 0.5));
+
+    return PackProbeKey(Cell, Level);
+}
+

@@ -13,13 +13,14 @@ RWTexture2D<float4> Output;
 StructuredBuffer<uint64_t> Probes;
 RWStructuredBuffer<uint64_t> RWProbes;
 
-
-
-
-
+RWStructuredBuffer<uint> ActiveProbes;
+RWStructuredBuffer<uint> ActiveCounter;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
+StructuredBuffer<uint64_t> HashTable;
+RWStructuredBuffer<uint64_t> RWHashTable;
+uint HashTableSize;
 
 //Hash to color debug
 uint MurmurFinalize32(uint h)
@@ -77,25 +78,33 @@ float3 ColorFromHash1(uint h1)
     float DeviceZ = LookupDeviceZ(BufferUV);
     if (DeviceZ == 0)
         return;
-    float2 ScreenPos = ViewportUVToScreenPos(ViewportUV);
     float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin, DeviceZ, 1.0f));
 
     float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
     float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
     
 	uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
-    uint Index = 0;
-    bool hasKey = HashTableFind(Key, Index);
+	//Index to keep things seperate avoiding conflicts
+	uint Index = MurmurFinalize32(uint(Key) ^ uint(Key >> 32));
+
+    HashTableData Table = {HashTable, RWHashTable, HashTableSize};
+
+    bool hasKey = HashTableFind(Key, Index, Table);
 	if (!hasKey)
 	{
-	    HashTableAdd(Key, Index);
-        hasKey = true;
-    }
-    uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
-    uint Hi = (uint32_t) (Key >> 32);
-    float3 Color = ColorFromHash(Lo, Hi);
+		//Add to table
+	    HashTableAdd(Key, Index, Table);
+        //Add to active probes for next passes
+		uint Counter;
+        InterlockedAdd(ActiveCounter[0], 1, Counter);
+        ActiveProbes[Counter] = Index;
 
-    //Debug visualisation of the HT
-//	Output[PixelId] = float4(hasKey && Index < HashTableSize ? Color : float3(0,0,0), 1);
+    }
+    ////Debug visualisation of the HT
+    //uint Lo = (uint32_t) (Key & 0xFFFFFFFFull);
+    //uint Hi = (uint32_t) (Key >> 32);
+    //float3 Color = ColorFromHash(Lo, Hi);
+
+    //	Output[PixelId] = float4(Color, 1);
 
 }
