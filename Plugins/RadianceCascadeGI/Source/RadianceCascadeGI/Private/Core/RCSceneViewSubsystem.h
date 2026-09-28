@@ -2,10 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/EngineSubsystem.h"
-#include "SceneViewSubsystem.generated.h"
+#include "RCSceneViewSubsystem.generated.h"
 
- UCLASS()
-class USceneViewSubsystem : public UEngineSubsystem
+UCLASS()
+class URCSceneViewSubsystem : public UEngineSubsystem
 {
 	GENERATED_BODY()
 public:

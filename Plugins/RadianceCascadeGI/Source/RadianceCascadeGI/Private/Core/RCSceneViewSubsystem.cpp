@@ -1,17 +1,17 @@
-#include "SceneViewSubsystem.h"
+#include "RCSceneViewSubsystem.h"
 
 #include "RCVars.h"
 #include "ScreenSpace/ScreenSpaceRCSceneExtension.h"
 #include "SceneViewExtension.h"
 #include "WorldSpace/WorldSpaceRCGi.h"
 
-void USceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+void URCSceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	ScreenSpaceExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
 	//WorldSpaceExtension = FSceneViewExtensions::NewExtension<FWorldSpaceRCGi>();
 }
 
-void USceneViewSubsystem::Deinitialize()
+void URCSceneViewSubsystem::Deinitialize()
 {
 	if (ScreenSpaceExtension)
 	{
