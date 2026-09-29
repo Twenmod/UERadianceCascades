@@ -54,3 +54,38 @@ uint DirToLinear(float3 dir, uint DirectionCount)
     uint2 g = uint2(DirectionCount << 1, DirectionCount);
     return EncodeMorton2(QuantizeDir(EncodeDir(dir), g) % g);
 }
+
+static const float TWO_PI = 6.28318530718;
+
+uint Compact1By1(uint x)
+{
+    x &= 0x55555555u;
+    x = (x ^ (x >> 1)) & 0x33333333u;
+    x = (x ^ (x >> 2)) & 0x0F0F0F0Fu;
+    x = (x ^ (x >> 4)) & 0x00FF00FFu;
+    x = (x ^ (x >> 8)) & 0x0000FFFFu;
+    return x;
+}
+
+uint2 DecodeMorton2(uint code)
+{
+    return uint2(Compact1By1(code), Compact1By1(code >> 1));
+}
+
+float3 DecodeDir(float2 uv)
+{
+    float phi = uv.x * TWO_PI;
+    float z = uv.y * 2.0 - 1.0;
+    float r = sqrt(saturate(1.0 - z * z));
+    float s, c;
+    sincos(phi, s, c);
+    return float3(r * c, r * s, z);
+}
+
+float3 LinearToDir(uint index, uint DirectionCount)
+{
+    uint2 g = uint2(DirectionCount << 1, DirectionCount);
+    uint2 cell = DecodeMorton2(index);
+    float2 uv = (float2(cell) + 0.5) / float2(g);
+    return DecodeDir(uv);
+}

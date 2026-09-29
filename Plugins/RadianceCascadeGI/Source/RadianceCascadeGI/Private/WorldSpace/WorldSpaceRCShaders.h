@@ -180,6 +180,7 @@ public:
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, DisplayCascade)
+
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization

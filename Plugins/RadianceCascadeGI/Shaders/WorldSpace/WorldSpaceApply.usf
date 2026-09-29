@@ -73,51 +73,56 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
     float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
     
-    uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+    uint Level = ComputeLevel(WorldPos, CameraPos);
+    float VoxelSize = LevelVoxelSize(Level);
+    float3 FloatCell = (WorldPos / VoxelSize)-0.5;
+    int3 GridCell = floor(FloatCell);
+    float3 Frac = FloatCell - GridCell;
 
+    ProbeKeyInfo KeyData = {GridCell.x, GridCell.y, GridCell.z, Level, true};
+    uint3 Cell = KeyData.Cell >> DisplayCascade;
 
-    ProbeKeyInfo KeyData = UnpackProbeKey(Key);
-    uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> DisplayCascade, KeyData.Level);
+    FGBufferData GBufferData = GetGBufferData(BufferUV);
+    float3 Normal = GBufferData.WorldNormal;
 
-    uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-    
-    if (HashTableFind(CascadeKey, Index, DisplayCascade))
+    float3 RadSum = 0;
+    float WeightSum = 0;
+    for (uint c = 0; c < 8; ++c)
     {
-        uint DirectionCount = BaseDirections << DisplayCascade;
+        int3 Corner = Cell + int3(c & 1, (c >> 1) & 1, c >> 2);
+        float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
+        float InterpWeight = T.x * T.y * T.z;
 
-        float3 TotalRadiance = 0;
-        uint Total = 0;
-        //Dumbly add all directions
-        for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
+        uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
+        uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+
+        if (HashTableFind(CascadeKey, Index, DisplayCascade))
         {
-            uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
-            uint BuffIndex = CascadeIndex+ Index * BinsPerProbe(DirectionCount) + i;
-            //uint Weight = ProbeWeights[BuffIndex];
-            //if (Weight == 0)
-            //{
-	        //    continue;
-            //}
-            //uint4 Radiance = ProbeRadiance[BuffIndex];
-            //float3 FloatRad = float3(UnpackFloatUnsigned(Radiance.x), UnpackFloatUnsigned(Radiance.y), UnpackFloatUnsigned(Radiance.z));
-            //TotalRadiance += FloatRad / float(Weight);
-            TotalRadiance += ProbeMergedRadiance[BuffIndex];
-            Total++;
+            uint DirectionCount = BaseDirections << DisplayCascade;
+
+            float3 TotalRadiance = 0;
+            uint Total = 0;
+        
+            for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
+            {
+                float3 Dir = LinearToDir(i, DirectionCount);
+                float NdotL = max(0.0, dot(Dir, Normal));
+                if (NdotL <= 0)
+                {
+	                continue;
+                }
+                uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
+                uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
+                TotalRadiance += ProbeMergedRadiance[BuffIndex]*NdotL;
+                Total++;
+            }
+			//Renormalize over hemisphere
+            TotalRadiance *= (4.0 * PI) / float(BinsPerProbe(DirectionCount));
+            RadSum += Total ? (TotalRadiance / float(Total))*InterpWeight : 0;
+            WeightSum += InterpWeight;
         }
-
-        FGBufferData GBufferData = GetGBufferData(BufferUV);
-        Output[PixelId] += float4(Total ? (TotalRadiance / float(Total))*GBufferData.BaseColor : 0, 1);
-
-            //Debug visualisation of the HT
-        uint Lo = (uint32_t) (CascadeKey & 0xFFFFFFFFull);
-        uint Hi = (uint32_t) (CascadeKey >> 32);
-        float3 Color = ColorFromHash(Lo, Hi);
-
-        //Output[PixelId] = float4(Color, 1);
     }
-if (Index < HashTableSize-1 && Index > 0)
-{
-        float3 Color = ColorFromHash1(MurmurFinalize32(Index));
-        //Output[PixelId] = float4(Color, 1);
+    
+    Output[PixelId] += float4((RadSum / WeightSum) * GBufferData.BaseColor, 1);
 
-}
 }
