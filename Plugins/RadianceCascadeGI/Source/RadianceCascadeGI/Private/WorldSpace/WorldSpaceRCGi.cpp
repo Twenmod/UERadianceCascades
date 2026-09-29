@@ -30,7 +30,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 }
 
 static constexpr uint32 HashTableSize = 4096;
-static constexpr uint32 DirectionCount = 16;
+static constexpr uint32 DirectionCount = 32;
 static constexpr uint32 Cascades = 4;
 
 void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)

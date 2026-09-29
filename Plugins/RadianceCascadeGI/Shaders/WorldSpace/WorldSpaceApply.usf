@@ -104,7 +104,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
         uint Hi = (uint32_t) (CascadeKey >> 32);
         float3 Color = ColorFromHash(Lo, Hi);
 
-        Output[PixelId] = float4(Color, 1);
+        //Output[PixelId] = float4(Color, 1);
     }
 if (Index < HashTableSize-1 && Index > 0)
 {

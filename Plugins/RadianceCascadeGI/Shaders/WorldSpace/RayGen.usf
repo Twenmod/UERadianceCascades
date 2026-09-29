@@ -15,15 +15,8 @@ Texture2D SceneDepth;
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
 
-#define R2_G  1.32471795724474602596f
-#define R2_A1 0.754877666246692760050f  // 1 / g
-#define R2_A2 0.569840290998053265911f  // 1 / g^2
-
-
-float2 R2Sequence(uint n, float2 Offset)
-{
-	return frac(0.5f + float2(R2_A1, R2_A2) * (float)n + Offset);
-}
+static const uint NumCascades = 4;
+static const float C0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 32 directions
 
 
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
@@ -42,8 +35,6 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float3 N = GBuffer.WorldNormal;
 	FRayDesc Ray;
 	Ray.Origin = TranslatedWorldPos + N * 0.5;
-	Ray.Direction = reflect(normalize(TranslatedWorldPos),
-	                        N);
 	Ray.TMin = 0.01;
 	Ray.TMax = 100000.0;
 
@@ -55,9 +46,11 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	float3 Radiance = 0;
 
-	float4 DirectionPDF = CosineSampleHemisphere(
-		R2Sequence(PixelCoord.x + PixelCoord.y * View.BufferSizeAndInvSize.x, float2(0, 0)), N);
-	Ray.Direction = DirectionPDF.xyz;
+    //Current R2 Seq is based on pixel, but it should be counting up per probe at this worldpos
+	float2 E = R2Sequence(PixelCoord.x + PixelCoord.y * View.BufferSizeAndInvSize.x + View.StateFrameIndex);
+	float3 Dir = UniformSampleSphere(E).xyz;
+	Dir *= sign(dot(Dir, N));
+	Ray.Direction = Dir.xyz;
 
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,
@@ -80,29 +73,41 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		true, // bEnableSkyLightContribution
 		Radiance);
 
-	if (Payload.IsMiss())
-	{
-		return;
-	}
-
-	//Split ray into probe
-	int Cascade = 0; // TODO: find actual cascade and output in that one
 	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
 	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
-    
-	uint ProbeIndex = 0;
-	if (HashTableFind(MakeProbeKey(WorldPos,CameraPos),ProbeIndex, Cascade))
+
+	//Split ray into probe
+	uint RayCascade = NumCascades - 1;
+	if (Payload.IsHit())
 	{
-		uint Index = ProbeIndex * BinsPerProbe() + DirToLinear(DirectionPDF.xyz);
-		float3 Rad = Radiance / DirectionPDF.w;
-        //Pack to uints to use atomics
-		InterlockedAdd(TotalRadiance[Index].x, PackFloatUnsigned(Rad.x));
-		InterlockedAdd(TotalRadiance[Index].y, PackFloatUnsigned(Rad.y));
-		InterlockedAdd(TotalRadiance[Index].z, PackFloatUnsigned(Rad.z));
-        InterlockedAdd(Weights[Index], 1);
+		uint Level = ComputeLevel(WorldPos, CameraPos);
+
+		float FCascade = ceil(max(0.5 * log2(Payload.HitT / (C0Len * LevelVoxelSize(Level))), 0.0));
+		RayCascade = min((uint)FCascade, NumCascades - 1);
 	}
 
 
+	//Fill into containing cascades
+	for (uint Cascade = 0; Cascade <= RayCascade; ++Cascade)
+	{
+		uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+		ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+		uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> Cascade, KeyData.Level);
 
-	//Output[PixelCoord] += float4(Radiance * DirectionPDF.w, 1);
+		uint ProbeIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+		if (HashTableFind(CascadeKey, ProbeIndex, Cascade))
+		{
+			bool HitCascade = (Cascade == RayCascade);
+
+
+uint SlotIndex = ProbeIndex * BinsPerProbe() + DirToLinear(Dir.xyz);
+			float3 Rad = Radiance * 2*PI;
+			//Pack to uints to use atomics
+			InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));
+			InterlockedAdd(TotalRadiance[SlotIndex].y, PackFloatUnsigned(Rad.y));
+			InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
+            InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : 1u); // Transmittance
+			InterlockedAdd(Weights[SlotIndex], 1);
+		}
+	}
 }

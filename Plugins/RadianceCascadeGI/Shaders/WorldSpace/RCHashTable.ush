@@ -121,7 +121,7 @@ bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
 
 static const float kBaseVoxelSize = 32.0;
-static const float kLevelBaseDist = 200.0;
+static const float kLevelBaseDist = 150.0;
 
 uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 {
@@ -191,7 +191,7 @@ uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
 {
     uint Level = ComputeLevel(WorldPos, CameraPos);
     float VoxelSize = LevelVoxelSize(Level);
-    int3 Cell = int3(floor((WorldPos / VoxelSize) - 0.5));
+    int3 Cell = int3(floor((WorldPos / VoxelSize)));
 
     return PackProbeKey(Cell, Level);
 }
