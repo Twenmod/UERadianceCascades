@@ -15,6 +15,8 @@ Texture2D SceneDepth;
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
 
+uint BaseDirections; // Currently assumed to be 32...
+
 static const uint NumCascades = 4;
 static const float C0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 32 directions
 
@@ -99,8 +101,10 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		{
 			bool HitCascade = (Cascade == RayCascade);
 
+			uint DirectionCount = BaseDirections << Cascade;
 
-uint SlotIndex = ProbeIndex * BinsPerProbe() + DirToLinear(Dir.xyz);
+			uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
+			uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(Dir.xyz, DirectionCount);
 			float3 Rad = Radiance * 2*PI;
 			//Pack to uints to use atomics
 			InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));

@@ -23,12 +23,15 @@ bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
 	// TODO v_mul_hi_u32 to avoid integer division
 	// ( Index * HashTableSize ) >> 32
 
-    Index = Index % HashTableSize;
-    uint TableBase = Cascade * HashTableSize;
+	uint TableBase = Cascade * HashTableSize;
+	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
 
-    LOOP
+    Index = Index % CascadeTableSize;
+
+	LOOP
 	ALLOW_UAV_CONDITION
-    for (uint i = 0; i < HashTableSize; i++)
+
+    for (uint i = 0; i < CascadeTableSize; i++)
     {
         uint64_t StoredKey = RWHashTable[TableBase+Index];
         if (StoredKey != Key)
@@ -36,7 +39,7 @@ bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
             if (StoredKey != 0)
             {
                 Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
+                Index = Index >= CascadeTableSize ? 0 : Index;
                 continue;
             }
 
@@ -48,7 +51,7 @@ bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
             else if (PrevKey != Key)
             {
                 Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
+                Index = Index >= CascadeTableSize ? 0 : Index;
                 continue;
             }
         }
@@ -65,32 +68,35 @@ bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
 bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 {
 	// Zero is reserved as invalid
-    Key++;
+	Key++;
 
-    Index = Index % HashTableSize;
-    uint TableBase = Cascade * HashTableSize;
 
-    LOOP
+	uint TableBase = Cascade * HashTableSize;
+	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+    Index = Index % CascadeTableSize;
+
+
+	LOOP
 	ALLOW_UAV_CONDITION
-    for (uint i = 0; i < HashTableSize; i++)
-    {
-        uint64_t StoredKey = HashTable[TableBase + Index];
-        if (StoredKey != Key)
-        {
-            if (StoredKey != 0)
-            {
-                Index++;
-                Index = Index >= HashTableSize ? 0 : Index;
-                continue;
-            }
+    for (uint i = 0; i < CascadeTableSize; i++)
+	{
+		uint64_t StoredKey = HashTable[TableBase + Index];
+		if (StoredKey != Key)
+		{
+			if (StoredKey != 0)
+			{
+				Index++;
+                Index = Index >= CascadeTableSize ? 0 : Index;
+				continue;
+			}
 
-            return false;
-        }
+			return false;
+		}
 
-        break;
-    }
+		break;
+	}
 
-    return true;
+	return true;
 }
 
 

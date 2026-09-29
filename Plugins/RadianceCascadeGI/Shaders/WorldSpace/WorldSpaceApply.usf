@@ -14,6 +14,8 @@ StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
 uint DisplayCascade;
 
+uint BaseDirections;
+
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
 
@@ -80,12 +82,15 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
     
     if (HashTableFind(CascadeKey, Index, DisplayCascade))
     {
+        uint DirectionCount = BaseDirections << DisplayCascade;
+
         float3 TotalRadiance = 0;
         uint Total = 0;
         //Dumbly add all directions
-        for (uint i = 0; i < BinsPerProbe(); ++i)
+        for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
         {
-            uint BuffIndex = Index * BinsPerProbe() + i;
+            uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
+            uint BuffIndex = CascadeIndex+ Index * BinsPerProbe(DirectionCount) + i;
             uint Weight = ProbeWeights[BuffIndex];
             if (Weight == 0)
             {

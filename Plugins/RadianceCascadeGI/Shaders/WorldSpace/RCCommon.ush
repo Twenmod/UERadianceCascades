@@ -1,8 +1,6 @@
 #define FLOAT_ATOMIC_PRECISION 0.00001
 #define FLOAT_ATOMIC_INV_PRECISION (1/FLOAT_ATOMIC_PRECISION)
 
-uint DirectionCount;
-
 uint PackFloatUnsigned(float Value)
 {
 	return Value*FLOAT_ATOMIC_INV_PRECISION;
@@ -47,11 +45,11 @@ uint EncodeMorton2(uint2 v)
 }
 
 
-uint BinsPerProbe()
+uint BinsPerProbe(uint DirectionCount)
 {
     return DirectionCount * 2 * DirectionCount;
 }
-uint DirToLinear(float3 dir)
+uint DirToLinear(float3 dir, uint DirectionCount)
 {
     uint2 g = uint2(DirectionCount << 1, DirectionCount);
     return EncodeMorton2(QuantizeDir(EncodeDir(dir), g) % g);

@@ -11,6 +11,11 @@ StructuredBuffer<uint> PrevActiveCounter;
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
+
+StructuredBuffer<uint4> TotalRadiance;
+StructuredBuffer<uint> Weights;
+
+
 uint Cascade;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)

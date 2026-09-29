@@ -72,12 +72,13 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			AllocatePooledBuffer(ActiveProbesDesc, ActiveProbes[i], TEXT("RC Active Probes"));
 			AllocatePooledBuffer(ActiveProbesCounterDesc, ActiveProbeCounters[i], TEXT("RC Active Probes"));
 		}
+
 		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32) * 4, HashTableSize * (DirectionCount * 2 * DirectionCount));
+			sizeof(uint32) * 4, Cascades*HashTableSize * (DirectionCount * 2 * DirectionCount));
 		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer,
 		                     TEXT("RC Cascade Probes Total Radiance and transmittance"));
 		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), HashTableSize * (DirectionCount * 2 * DirectionCount));
+			sizeof(uint32), Cascades*HashTableSize * (DirectionCount * 2 * DirectionCount));
 		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer, TEXT("RC Cascade Probes Weight"));
 	}
 
@@ -197,7 +198,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		RGParams->TotalRadiance = RadianceUAV;
 		RGParams->Weights = WeightUAV;
 		RGParams->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
-		RGParams->DirectionCount = DirectionCount;
+		RGParams->BaseDirections = DirectionCount;
 		const FSceneTextures& SceneTex = ViewInfo.GetSceneTextures();
 		RGParams->SceneTextures.SceneDepthTexture = SceneTex.Depth.Resolve;
 		RGParams->SceneTextures.GBufferATexture = SceneTex.GBufferA;
@@ -260,7 +261,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		ApplyPassParameters->HashTable = HashTableSRV;
 		ApplyPassParameters->HashTableSize = HashTableSize;
 		ApplyPassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-		ApplyPassParameters->DirectionCount = DirectionCount;
+		ApplyPassParameters->BaseDirections = DirectionCount;
 		ApplyPassParameters->ProbeRadiance = GraphBuilder.CreateSRV(RadianceBuffer);
 		ApplyPassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
 		ApplyPassParameters->Output = Output;

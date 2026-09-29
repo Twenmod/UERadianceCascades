@@ -121,7 +121,7 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
 		SHADER_PARAMETER(uint32, HashTableSize)
-		SHADER_PARAMETER(uint32, DirectionCount)
+		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
@@ -172,7 +172,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER(uint32, HashTableSize)
-		SHADER_PARAMETER(uint32, DirectionCount)
+		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, DisplayCascade)
 
 	END_SHADER_PARAMETER_STRUCT()

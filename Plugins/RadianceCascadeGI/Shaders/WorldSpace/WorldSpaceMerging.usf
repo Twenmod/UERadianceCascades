@@ -1,0 +1,50 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
+#include "RCHashTable.ush"
+#include "RCCommon.ush"
+
+// Shader parameters
+StructuredBuffer<uint> PrevActiveProbes;
+StructuredBuffer<uint> PrevActiveCounter;
+
+uint Cascade;
+uint BaseRayCount;
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
+{
+	
+	uint ProbeId = DispatchThreadId;
+	
+	// Check that we are in scope
+	if (ProbeId >= PrevActiveCounter[0])
+		return;
+
+
+    //Split key into higher cascade
+	uint64_t ProbeKey = RWHashTable[(Cascade - 1) * HashTableSize + PrevActiveProbes[ProbeId]] - 1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
+	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
+
+	for (int i = 0; i < BinsPerProbe(); ++i)
+	{
+		uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
+		uint Index = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
+		if (HashTableFind(HighKey, Index, Cascade + 1))
+		{
+				
+		}
+
+
+
+	}
+
+
+	//Index to keep things seperate avoiding conflicts
+	if (HashTableAdd(HighKey, Index, Cascade))
+	{
+		uint Counter;
+		InterlockedAdd(ActiveCounter[0], 1, Counter);
+		ActiveProbes[Counter] = Index;
+	}
+}
