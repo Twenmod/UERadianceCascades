@@ -6,11 +6,16 @@
 #include "RCCommon.ush"
 
 // Shader parameters
-StructuredBuffer<uint> PrevActiveProbes;
-StructuredBuffer<uint> PrevActiveCounter;
+StructuredBuffer<uint> ActiveProbes;
+StructuredBuffer<uint> ActiveCounter;
 
 uint Cascade;
-uint BaseRayCount;
+uint BaseDirections;
+
+StructuredBuffer<uint4> ProbeRadiance;
+StructuredBuffer<uint> ProbeWeights;
+
+RWStructuredBuffer<float3> ProbeMergedRadiance;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
@@ -18,33 +23,49 @@ uint BaseRayCount;
 	uint ProbeId = DispatchThreadId;
 	
 	// Check that we are in scope
-	if (ProbeId >= PrevActiveCounter[0])
+	if (ProbeId >= ActiveCounter[0])
 		return;
 
-
-    //Split key into higher cascade
-	uint64_t ProbeKey = RWHashTable[(Cascade - 1) * HashTableSize + PrevActiveProbes[ProbeId]] - 1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
+	//Blend higher cascade
+	uint ProbeIndex = ActiveProbes[ProbeId];
+	uint64_t ProbeKey = HashTable[(Cascade) * HashTableSize + ProbeIndex] - 1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
-	for (int i = 0; i < BinsPerProbe(); ++i)
+	uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
+	uint ParentIndex = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
+	bool HasParent = HashTableFind(HighKey, ParentIndex, Cascade + 1);
+
+	uint DirectionCount = BaseDirections << Cascade;
+
+	uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
+	uint ParentCascadeIndex = (Cascade + 1) * HashTableSize * BinsPerProbe(BaseDirections);
+	uint ParentDirCount = BaseDirections << (Cascade+1);
+
+	//Paper's thing does this per y thread instead then merges with wave semantics but this is simpler for now.
+	for (int i = 0; i < BinsPerProbe(DirectionCount); ++i)
 	{
-		uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
-		uint Index = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
-		if (HashTableFind(HighKey, Index, Cascade + 1))
+		//Load own Radiance
+		uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + i;
+		
+		uint Weight = ProbeWeights[SlotIndex];
+		uint4 PackedRadiance = ProbeRadiance[SlotIndex];
+		float3 CurrentRadiance = float3(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y), UnpackFloatUnsigned(PackedRadiance.z)) / max(Weight, 1);
+		float TransmittedWeight = float(PackedRadiance.w) / max(Weight, 1);
+		float3 ParentRadiance = 0;
+		if (HasParent)
 		{
-				
+			//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
+			for (uint c = 0; c < 4; ++c)
+			{
+				uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + c;
+				ParentRadiance += ProbeMergedRadiance[ParentSlotIndex];
+			}
+			ParentRadiance *= 0.25;
 		}
 
+		ProbeMergedRadiance[SlotIndex] = (Weight == 0) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
+		//ProbeMergedRadiance[SlotIndex] = CurrentRadiance;
+		//+ParentRadiance * TransmittedWeight;
 
-
-	}
-
-
-	//Index to keep things seperate avoiding conflicts
-	if (HashTableAdd(HighKey, Index, Cascade))
-	{
-		uint Counter;
-		InterlockedAdd(ActiveCounter[0], 1, Counter);
-		ActiveProbes[Counter] = Index;
 	}
 }

@@ -12,6 +12,7 @@ RWTexture2D<float4> Output;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
+StructuredBuffer<float3> ProbeMergedRadiance;
 uint DisplayCascade;
 
 uint BaseDirections;
@@ -91,16 +92,18 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
         {
             uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
             uint BuffIndex = CascadeIndex+ Index * BinsPerProbe(DirectionCount) + i;
-            uint Weight = ProbeWeights[BuffIndex];
-            if (Weight == 0)
-            {
-	            continue;
-            }
-            uint4 Radiance = ProbeRadiance[BuffIndex];
-            float3 FloatRad = float3(UnpackFloatUnsigned(Radiance.x), UnpackFloatUnsigned(Radiance.y), UnpackFloatUnsigned(Radiance.z));
-        	TotalRadiance += FloatRad / float(Weight);
+            //uint Weight = ProbeWeights[BuffIndex];
+            //if (Weight == 0)
+            //{
+	        //    continue;
+            //}
+            //uint4 Radiance = ProbeRadiance[BuffIndex];
+            //float3 FloatRad = float3(UnpackFloatUnsigned(Radiance.x), UnpackFloatUnsigned(Radiance.y), UnpackFloatUnsigned(Radiance.z));
+            //TotalRadiance += FloatRad / float(Weight);
+            TotalRadiance += ProbeMergedRadiance[BuffIndex];
             Total++;
         }
+
         FGBufferData GBufferData = GetGBufferData(BufferUV);
         Output[PixelId] += float4(Total ? (TotalRadiance / float(Total))*GBufferData.BaseColor : 0, 1);
 

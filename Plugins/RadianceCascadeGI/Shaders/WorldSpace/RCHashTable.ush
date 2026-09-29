@@ -1,4 +1,4 @@
-//Modified from Engine/Private/HashTable.ush
+//Modified/based from Engine/Private/HashTable.ush
 
 //The chandra(paper's) implementation uses a smarter hashing thing which is especially nice when doing multibounce since it stays stable, but this is fine for now
 
@@ -126,8 +126,8 @@ bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 //Limits from above sizes
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
 
-static const float kBaseVoxelSize = 32.0;
-static const float kLevelBaseDist = 150.0;
+static const float kBaseVoxelSize = 24.0;
+static const float kLevelBaseDist = 400.0;
 
 uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 {
