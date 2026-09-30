@@ -20,6 +20,7 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeBinCounterBuffer;
+	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeMergedRadianceBuffer;
 	TArray<TRefCountPtr<FRDGPooledBuffer>> ActiveProbes;
 	TArray<TRefCountPtr<FRDGPooledBuffer>> ActiveProbeCounters;

@@ -14,6 +14,7 @@ uint BaseDirections;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
+StructuredBuffer<uint> ProbeDepositCount;
 
 RWStructuredBuffer<float3> ProbeMergedRadiance;
 
@@ -72,15 +73,23 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
             
             if (HashTableFind(CascadeKey, ParentIndex, Cascade + 1))
             {
-                //Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
-                float3 DirRadiance = 0;
-            	for (uint c = 0; c < 4; ++c)
+				//Amount of rays this probe got, so lower ones are low quality
+                uint DepositCount = ProbeDepositCount[ParentCascadeIndex+ParentIndex];
+				if (DepositCount <= 0)
                 {
-                    uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + c;
+	                continue;
+                }
+
+				//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
+                float3 DirRadiance = 0;
+                for (uint d = 0; d < 4; ++d)
+                {
+                    uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + d;
                     DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
                 }
-                ParentRadianceSum += (DirRadiance * 0.25) * InterpWeight;
-                ParentRadianceWeight += InterpWeight;
+                float Weight = InterpWeight * float(DepositCount);
+                ParentRadianceSum += (DirRadiance * 0.25) * Weight;
+                ParentRadianceWeight += Weight;
             }
         }
         float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;

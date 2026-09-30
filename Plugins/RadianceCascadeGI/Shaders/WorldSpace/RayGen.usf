@@ -15,6 +15,7 @@ Texture2D SceneDepth;
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
 RWStructuredBuffer<uint> BinCounts;
+RWStructuredBuffer<uint> DepositCounts;
 
 uint BaseDirections; // Currently assumed to be 32...
 
@@ -128,6 +129,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 			InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
             InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : 1u); // Transmittance
 			InterlockedAdd(Weights[SlotIndex], 1);
+            InterlockedAdd(DepositCounts[CascadeIndex+ProbeIndex], 1);
+
 		}
 	}
 
