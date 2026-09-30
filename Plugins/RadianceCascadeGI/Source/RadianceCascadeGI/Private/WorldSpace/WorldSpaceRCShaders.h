@@ -1,3 +1,5 @@
+#pragma once
+
 #include "CoreMinimal.h"
 #include "RenderGraphUtils.h"
 #include "PostProcess/PostProcessMaterial.h"
