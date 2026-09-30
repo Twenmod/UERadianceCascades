@@ -14,6 +14,7 @@ Texture2D SceneDepth;
 
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
+RWStructuredBuffer<uint> BinCounts;
 
 uint BaseDirections; // Currently assumed to be 32...
 
@@ -40,6 +41,23 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	Ray.TMin = 0.01;
 	Ray.TMax = 100000.0;
 
+	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
+	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
+
+	uint64_t TopKey = MakeProbeKey(WorldPos, CameraPos);
+
+	uint TopProbeIndex = MurmurFinalize32(uint(TopKey) ^ MurmurFinalize32(uint(TopKey >> 32)));
+	bool InProbe = HashTableFind(TopKey, TopProbeIndex, 0);
+
+    if (!InProbe)
+    {
+        //Shouldn't really be possible
+	    return; 
+    }
+	uint TopSlotIndex = TopProbeIndex;
+	uint BinIndex = 0;
+	InterlockedAdd(BinCounts[TopSlotIndex], 1, BinIndex);
+
 	FRandomSequence RandSequence;
 	RandomSequence_Initialize(RandSequence, PixelCoord, 0, View.StateFrameIndex, 1);
 
@@ -48,8 +66,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	float3 Radiance = 0;
 
-    //Current R2 Seq is based on pixel, but it should be counting up per probe at this worldpos
-	float2 E = R2Sequence(PixelCoord.x + PixelCoord.y * View.BufferSizeAndInvSize.x + View.StateFrameIndex);
+    //Add per probe hash to randomize it a bit so not all probes go into a similar direction on low samples
+	float2 E = R2Sequence(BinIndex+1);
 	float3 Dir = UniformSampleSphere(E).xyz;
 	Dir *= sign(dot(Dir, N));
 	Ray.Direction = Dir.xyz;
@@ -75,8 +93,6 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		true, // bEnableSkyLightContribution
 		Radiance);
 
-	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
-	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
 
 	//Split ray into probe
 	uint RayCascade = NumCascades - 1;
@@ -114,4 +130,6 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 			InterlockedAdd(Weights[SlotIndex], 1);
 		}
 	}
+
+    //Output[PixelCoord] = float4(Radiance * 2*PI,1.0);
 }

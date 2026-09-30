@@ -93,6 +93,7 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, BinCounts)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
 	END_SHADER_PARAMETER_STRUCT()
