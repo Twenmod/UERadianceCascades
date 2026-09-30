@@ -31,9 +31,12 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
 	uint64_t ProbeKey = HashTable[(Cascade) * HashTableSize + ProbeIndex] - 1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
-	uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
-	uint ParentIndex = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
-	bool HasParent = HashTableFind(HighKey, ParentIndex, Cascade + 1);
+    int3 ParentCell = (KeyData.Cell-1) >> 1;
+    uint3 Alignment = uint3(KeyData.Cell & 1);
+    uint J = Alignment.x | (Alignment.y << 1) | (Alignment.z << 2);
+
+    //Corner weights for which corners are the closest of the 8, since the child sits either at .75 or .25 on one axis, combined to 3 axi
+    static const float CornerWeight[4] = { 0.421875, 0.140625, 0.046875, 0.015625 };
 
 	uint DirectionCount = BaseDirections << Cascade;
 
@@ -51,23 +54,38 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
 		uint4 PackedRadiance = ProbeRadiance[SlotIndex];
 		float3 CurrentRadiance = float3(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y), UnpackFloatUnsigned(PackedRadiance.z)) / max(Weight, 1);
 		float TransmittedWeight = float(PackedRadiance.w) / max(Weight, 1);
-		float3 ParentRadiance = 0;
-		if (HasParent)
-		{
-			//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
-			for (uint c = 0; c < 4; ++c)
-			{
-				uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + c;
-				ParentRadiance += ProbeMergedRadiance[ParentSlotIndex];
-			}
-			ParentRadiance *= 0.25;
-		}
-
-		ProbeMergedRadiance[SlotIndex] = (Weight == 0) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
-		//ProbeMergedRadiance[SlotIndex] = CurrentRadiance;
-		//+ParentRadiance * TransmittedWeight;
-
-	}
+		
+		float3 ParentRadianceSum = 0;
+		float ParentRadianceWeight = 0;
+        for (uint c = 0; c < 8; ++c)
+        {
+            int3 Corner = ParentCell + int3(c & 1, (c >> 1) & 1, c >> 2);
+            
+        	//TODO: Weigh probes by how many rays got binned into them, to avoid using undersampled ones. (easy after doing correct R2 as well)
+            uint WeightBits = c ^ J;
+            uint WeightId = countbits(WeightBits);
+        	float InterpWeight = CornerWeight[WeightId];
 
 
+            uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
+            uint ParentIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+            
+            if (HashTableFind(CascadeKey, ParentIndex, Cascade + 1))
+            {
+                //Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
+                float3 DirRadiance = 0;
+            	for (uint c = 0; c < 4; ++c)
+                {
+                    uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + c;
+                    DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
+                }
+                ParentRadianceSum += (DirRadiance * 0.25) * InterpWeight;
+                ParentRadianceWeight += InterpWeight;
+            }
+        }
+        float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
+        ProbeMergedRadiance[SlotIndex] = (Weight == 0) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
+    }
 }
+
+
