@@ -20,81 +20,83 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
-	
 	uint ProbeId = DispatchThreadId;
-	
+
 	// Check that we are in scope
 	if (ProbeId >= ActiveCounter[0])
+	{
 		return;
+	}
 
 	//Blend higher cascade
 	uint ProbeIndex = ActiveProbes[ProbeId];
-	uint64_t ProbeKey = HashTable[(Cascade) * HashTableSize + ProbeIndex] - 1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
+	uint64_t ProbeKey = HashTable[(Cascade) * HashTableSize + ProbeIndex] - 1;
+	// The -1 is since keys cannot be 0 so hashtableadd adds 1
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
-    int3 ParentCell = (KeyData.Cell-1) >> 1;
-    uint3 Alignment = uint3(KeyData.Cell & 1);
-    uint J = Alignment.x | (Alignment.y << 1) | (Alignment.z << 2);
+	int3 ParentCell = (KeyData.Cell - 1) >> 1;
+	uint3 Alignment = uint3(~KeyData.Cell & 1);
+	uint J = Alignment.x | (Alignment.y << 1) | (Alignment.z << 2);
 
-    //Corner weights for which corners are the closest of the 8, since the child sits either at .75 or .25 on one axis, combined to 3 axi
-    static const float CornerWeight[4] = { 0.421875, 0.140625, 0.046875, 0.015625 };
+	//Corner weights for which corners are the closest of the 8, since the child sits either at .75 or .25 on one axis, combined to 3 axi
+	static const float CornerWeight[4] = {0.421875, 0.140625, 0.046875, 0.015625};
 
 	uint DirectionCount = BaseDirections << Cascade;
 
 	uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
 	uint ParentCascadeIndex = (Cascade + 1) * HashTableSize * BinsPerProbe(BaseDirections);
-	uint ParentDirCount = BaseDirections << (Cascade+1);
+	uint ParentDirCount = BaseDirections << (Cascade + 1);
+
 
 	//Paper's thing does this per y thread instead then merges with wave semantics but this is simpler for now.
 	for (int i = 0; i < BinsPerProbe(DirectionCount); ++i)
 	{
 		//Load own Radiance
 		uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + i;
-		
-		uint Weight = ProbeWeights[SlotIndex];
+
+        float Weight = UnpackFloatUnsigned(ProbeWeights[SlotIndex]);
 		uint4 PackedRadiance = ProbeRadiance[SlotIndex];
-		float3 CurrentRadiance = float3(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y), UnpackFloatUnsigned(PackedRadiance.z)) / max(Weight, 1);
-		float TransmittedWeight = float(PackedRadiance.w) / max(Weight, 1);
-		
+		float3 CurrentRadiance = float3(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y),
+		                                UnpackFloatUnsigned(PackedRadiance.z)) / Weight;
+		float TransmittedWeight = UnpackFloatUnsigned(PackedRadiance.w) / Weight;
+
 		float3 ParentRadianceSum = 0;
 		float ParentRadianceWeight = 0;
-        for (uint c = 0; c < 8; ++c)
-        {
-            int3 Corner = ParentCell + int3(c & 1, (c >> 1) & 1, c >> 2);
-            
-        	//TODO: Weigh probes by how many rays got binned into them, to avoid using undersampled ones. (easy after doing correct R2 as well)
-            uint WeightBits = c ^ J;
-            uint WeightId = countbits(WeightBits);
-        	float InterpWeight = CornerWeight[WeightId];
+		for (uint c = 0; c < 8; ++c)
+		{
+			int3 Corner = ParentCell + int3(c & 1, (c >> 1) & 1, c >> 2);
+
+			//TODO: Weigh probes by how many rays got binned into them, to avoid using undersampled ones. (easy after doing correct R2 as well)
+			uint WeightBits = c ^ J;
+			uint WeightId = countbits(WeightBits);
+			float InterpWeight = CornerWeight[WeightId];
 
 
-            uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
-            uint ParentIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-            
-            if (HashTableFind(CascadeKey, ParentIndex, Cascade + 1))
-            {
+			uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
+			uint ParentIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+
+			if (HashTableFind(CascadeKey, ParentIndex, Cascade + 1))
+			{
 				//Amount of rays this probe got, so lower ones are low quality
-                uint DepositCount = ProbeDepositCount[ParentCascadeIndex+ParentIndex];
+				uint DepositCount = ProbeDepositCount[((Cascade + 1) * HashTableSize) + ParentIndex];
 				if (DepositCount <= 0)
-                {
-	                continue;
-                }
+				{
+					continue;
+				}
 
 				//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
-                float3 DirRadiance = 0;
-                for (uint d = 0; d < 4; ++d)
-                {
-                    uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + d;
-                    DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
-                }
-                float Weight = InterpWeight * float(DepositCount);
-                ParentRadianceSum += (DirRadiance * 0.25) * Weight;
-                ParentRadianceWeight += Weight;
-            }
-        }
-        float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
-        ProbeMergedRadiance[SlotIndex] = (Weight == 0) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
-    }
+				float3 DirRadiance = 0;
+				for (uint d = 0; d < 4; ++d)
+				{
+					uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + d;
+					DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
+				}
+				float QualityInterpWeight = InterpWeight * UnpackFloatUnsigned(DepositCount);
+				ParentRadianceSum += (DirRadiance * 0.25) * QualityInterpWeight;
+				ParentRadianceWeight += QualityInterpWeight;
+			}
+		}
+		float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
+		ProbeMergedRadiance[SlotIndex] = (Weight <= 0.0001) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
+	}
 }
-
-

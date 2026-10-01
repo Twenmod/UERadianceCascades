@@ -42,16 +42,31 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
     float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
 
 	uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
-	//Index to keep things seperate avoiding conflicts
-    uint Index = MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)));
+    ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+
+	uint2 LevelRange;
+    float2 LodWeights;
+    ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
+
+    for (uint Level = 0; Level < 2; ++Level)
+    {
+	    if (Level == 1 && LodWeights.y == 0)
+        {
+            break;
+        }
+
+        Key = PackProbeKey(KeyData.Cell >> Level, LevelRange[Level]);
+
+		//Index to keep things seperate avoiding conflicts
+        uint Index = MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)));
 
 		//Try add to table
         if (HashTableAdd(Key, Index, 0))
         {
 	        //Add to active probes for next passes
-	        uint Counter;
-	        InterlockedAdd(ActiveCounter[0], 1, Counter);
-	        ActiveProbes[Counter] = Index;
+            uint Counter;
+            InterlockedAdd(ActiveCounter[0], 1, Counter);
+            ActiveProbes[Counter] = Index;
         }
-
+    }
 }

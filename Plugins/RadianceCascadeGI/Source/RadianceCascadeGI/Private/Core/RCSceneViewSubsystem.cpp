@@ -8,7 +8,6 @@
 void URCSceneViewSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	ScreenSpaceExtension = FSceneViewExtensions::NewExtension<FScreenSpaceRCSceneExtension>();
-	//WorldSpaceExtension = FSceneViewExtensions::NewExtension<FWorldSpaceRCGi>();
 }
 
 void URCSceneViewSubsystem::Deinitialize()

@@ -5,7 +5,7 @@ namespace RC
 {
 		TAutoConsoleVariable<int32> CVarScreenspaceEnabled(
 			TEXT("r.RC.ScreenSpaceEnabled"),
-			1,
+			0,
 			TEXT("Enable Screen Space RC \n")
 			TEXT(" 0: OFF;")
 			TEXT(" 1: ON."),

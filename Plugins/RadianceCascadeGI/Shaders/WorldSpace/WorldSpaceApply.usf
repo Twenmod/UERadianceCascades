@@ -20,109 +20,120 @@ uint BaseDirections;
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
 
-
 uint Hash64(uint Lo, uint Hi)
 {
-    uint h = MurmurFinalize32(Lo);
-    h ^= MurmurFinalize32(Hi) + 0x9E3779B9u + (h << 6) + (h >> 2);
-    return MurmurFinalize32(h);
+	uint h = MurmurFinalize32(Lo);
+	h ^= MurmurFinalize32(Hi) + 0x9E3779B9u + (h << 6) + (h >> 2);
+	return MurmurFinalize32(h);
 }
 
 float3 HSVtoRGB(float3 c)
 {
-    float3 p = abs(frac(c.xxx + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
-    return c.z * lerp(1.0.xxx, saturate(p - 1.0), c.y);
+	float3 p = abs(frac(c.xxx + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+	return c.z * lerp(1.0.xxx, saturate(p - 1.0), c.y);
 }
 
 float3 ColorFromHash(uint Lo, uint Hi)
 {
-    uint h = Hash64(Lo, Hi);
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
+	uint h = Hash64(Lo, Hi);
+	float Hue = (h & 0xFFFFu) / 65535.0;
+	float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
+	float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
+	return HSVtoRGB(float3(Hue, Sat, Val));
 }
+
 float3 ColorFromHash1(uint h1)
 {
-    uint h = h1;
-    float Hue = (h & 0xFFFFu) / 65535.0;
-    float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
-    float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
-    return HSVtoRGB(float3(Hue, Sat, Val));
+	uint h = h1;
+	float Hue = (h & 0xFFFFu) / 65535.0;
+	float Sat = 0.55 + 0.35 * ((h >> 16) & 0xFFu) / 255.0;
+	float Val = 0.70 + 0.30 * ((h >> 24) & 0xFFu) / 255.0;
+	return HSVtoRGB(float3(Hue, Sat, Val));
 }
 
-[numthreads(THREADS_X, THREADS_Y, THREADS_Z)] 
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
 void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
-	
-    uint2 PixelId = DispatchThreadId;
-	
+	uint2 PixelId = DispatchThreadId;
+
 	// Check that we are in scope
-    if (any(float2(DispatchThreadId) >= SceneColorViewport_ViewportSize))
-        return;
+	if (any(float2(DispatchThreadId) >= SceneColorViewport_ViewportSize))
+	{
+		return;
+	}
 
-    float2 ViewportUV = (float2(PixelId) + 0.5f) * SceneColorViewport_ViewportSizeInverse;
-    float2 BufferUV = (float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin) * SceneColorViewport_ExtentInverse;
+	float2 ViewportUV = (float2(PixelId) + 0.5f) * SceneColorViewport_ViewportSizeInverse;
+	float2 BufferUV = (float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin) * SceneColorViewport_ExtentInverse;
 
-    float DeviceZ = LookupDeviceZ(BufferUV);
-    if (DeviceZ == 0)
-        return;
-    float2 ScreenPos = ViewportUVToScreenPos(ViewportUV);
-    float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin, DeviceZ, 1.0f));
+	float DeviceZ = LookupDeviceZ(BufferUV);
+	if (DeviceZ == 0)
+	{
+		return;
+	}
+	float2 ScreenPos = ViewportUVToScreenPos(ViewportUV);
+	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(
+		float4(float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin, DeviceZ, 1.0f));
 
-    float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
-    float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
-    
-    uint Level = ComputeLevel(WorldPos, CameraPos);
-    float VoxelSize = LevelVoxelSize(Level);
-    float3 FloatCell = (WorldPos / VoxelSize)-0.5;
-    int3 GridCell = floor(FloatCell);
-    float3 Frac = FloatCell - GridCell;
+	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
+	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
 
-    ProbeKeyInfo KeyData = {GridCell.x, GridCell.y, GridCell.z, Level, true};
-    uint3 Cell = KeyData.Cell >> DisplayCascade;
+	FGBufferData GBufferData = GetGBufferData(BufferUV);
+	float3 Normal = GBufferData.WorldNormal;
 
-    FGBufferData GBufferData = GetGBufferData(BufferUV);
-    float3 Normal = GBufferData.WorldNormal;
+	uint2 LevelRange;
+	float2 LodWeights;
+	ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
 
-    float3 RadSum = 0;
-    float WeightSum = 0;
-    for (uint c = 0; c < 8; ++c)
-    {
-        int3 Corner = Cell + int3(c & 1, (c >> 1) & 1, c >> 2);
-        float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
-        float InterpWeight = T.x * T.y * T.z;
+	float3 RadSum = 0;
+	float WeightSum = 0;
 
-        uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
-        uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+	for (uint Level = 0; Level < 2; Level++)
+	{
+		if (Level == 1 && LodWeights.y == 0)
+		{
+			break;
+		}
+        float LodVoxel = LevelVoxelSize(LevelRange[Level]) * float(1u << DisplayCascade);
+        float3 FloatCell = WorldPos / LodVoxel - 0.5;
+        int3 Cell = int3(floor(FloatCell));
+        float3 Frac = FloatCell - float3(Cell);
 
-        if (HashTableFind(CascadeKey, Index, DisplayCascade))
-        {
-            uint DirectionCount = BaseDirections << DisplayCascade;
+		for (uint c = 0; c < 8; ++c)
+		{
+            int3 Corner = (Cell) + int3(c & 1, (c >> 1) & 1, c >> 2);
+			float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
+			float InterpWeight = T.x * T.y * T.z;
 
-            float3 TotalRadiance = 0;
-            uint Total = 0;
-        
-            for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
-            {
-                float3 Dir = LinearToDir(i, DirectionCount);
-                float NdotL = max(0.0, dot(Dir, Normal));
-                if (NdotL <= 0)
-                {
-	                continue;
-                }
-                uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
-                uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
-                TotalRadiance += ProbeMergedRadiance[BuffIndex]*NdotL;
-                Total++;
-            }
-			//Renormalize over hemisphere
-            TotalRadiance *= (4.0 * PI) / float(BinsPerProbe(DirectionCount));
-            RadSum += Total ? (TotalRadiance / float(Total))*InterpWeight : 0;
-            WeightSum += InterpWeight;
-        }
-    }
-    
-    Output[PixelId] += float4((RadSum / WeightSum) * GBufferData.BaseColor, 1);
+			uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
+			uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
 
+			if (HashTableFind(CascadeKey, Index, DisplayCascade))
+			{
+				uint DirectionCount = BaseDirections << DisplayCascade;
+
+				float3 TotalRadiance = 0;
+				float TotalWeight = 0;
+
+				for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
+				{
+					float3 Dir = LinearToDir(i, DirectionCount);
+					float NdotL = max(0.0, dot(Dir, Normal));
+					if (NdotL <= 0)
+					{
+						continue;
+					}
+					uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
+					uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
+					TotalRadiance += ProbeMergedRadiance[BuffIndex] * NdotL;
+					TotalWeight += NdotL;
+				}
+				//Renormalize over hemisphere
+				TotalRadiance /= float(BinsPerProbe(DirectionCount));
+                RadSum += TotalWeight >= 0 ? (TotalRadiance/TotalWeight) * InterpWeight * LodWeights[Level] : 0;
+				WeightSum += InterpWeight * (LodWeights[Level]);
+			}
+		}
+	}
+
+	Output[PixelId] += float4((RadSum / WeightSum) * GBufferData.BaseColor, 1) * PI;
 }

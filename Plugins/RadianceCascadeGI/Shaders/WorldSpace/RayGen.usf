@@ -50,11 +50,11 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	uint TopProbeIndex = MurmurFinalize32(uint(TopKey) ^ MurmurFinalize32(uint(TopKey >> 32)));
 	bool InProbe = HashTableFind(TopKey, TopProbeIndex, 0);
 
-    if (!InProbe)
-    {
-        //Shouldn't really be possible
-	    return; 
-    }
+	if (!InProbe)
+	{
+		//Shouldn't really be possible
+		return;
+	}
 	uint TopSlotIndex = TopProbeIndex;
 	uint BinIndex = 0;
 	InterlockedAdd(BinCounts[TopSlotIndex], 1, BinIndex);
@@ -63,15 +63,17 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	RandomSequence_Initialize(RandSequence, PixelCoord, 0, View.StateFrameIndex, 1);
 
 	FRayCone RayCone = (FRayCone)0;
-	RayCone.SpreadAngle = View.EyeToPixelSpreadAngle;
+	RayCone.SpreadAngle = View.
+		EyeToPixelSpreadAngle;
 
 	float3 Radiance = 0;
 
-    //Add per probe hash to randomize it a bit so not all probes go into a similar direction on low samples
-	float2 E = R2Sequence(BinIndex+1);
+	//Add per probe hash to randomize it a bit so not all probes go into a similar direction on low samples
+	float2 E = R2Sequence(BinIndex + 1);
 	float3 Dir = UniformSampleSphere(E).xyz;
 	Dir *= sign(dot(Dir, N));
-	Ray.Direction = Dir.xyz;
+	Ray.Direction = Dir.
+		xyz;
 
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,
@@ -107,32 +109,43 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 
 	//Fill into containing cascades
-	for (uint Cascade = 0; Cascade <= RayCascade; ++Cascade)
+
+	for (
+		uint Cascade = 0; Cascade <=
+		RayCascade; ++Cascade)
 	{
 		uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
 		ProbeKeyInfo KeyData = UnpackProbeKey(Key);
-		uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> Cascade, KeyData.Level);
+		uint2 LevelRange;
+		float2 LodWeights;
+		ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
 
-		uint ProbeIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-		if (HashTableFind(CascadeKey, ProbeIndex, Cascade))
+		for (
+			uint Level = 0; Level < 2; ++Level)
 		{
-			bool HitCascade = (Cascade == RayCascade);
+			uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> (Cascade + Level), LevelRange[Level]);
 
-			uint DirectionCount = BaseDirections << Cascade;
+			uint ProbeIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
+			if (HashTableFind(CascadeKey, ProbeIndex, Cascade))
+			{
+				bool HitCascade = (Cascade == RayCascade);
 
-			uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
-			uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(Dir.xyz, DirectionCount);
-			float3 Rad = Radiance * 2*PI;
-			//Pack to uints to use atomics
-			InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));
-			InterlockedAdd(TotalRadiance[SlotIndex].y, PackFloatUnsigned(Rad.y));
-			InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
-            InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : 1u); // Transmittance
-			InterlockedAdd(Weights[SlotIndex], 1);
-            InterlockedAdd(DepositCounts[CascadeIndex+ProbeIndex], 1);
+				uint DirectionCount = BaseDirections << Cascade;
 
+				uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
+				uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(
+					Dir.xyz, DirectionCount);
+				float3 Rad = Radiance * 2 * PI * LodWeights[Level];
+                uint PackedLodWeight = PackFloatUnsigned(LodWeights[Level]);
+				//Pack to uints to use atomics
+				InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));
+				InterlockedAdd(TotalRadiance[SlotIndex].y, PackFloatUnsigned(Rad.y));
+				InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
+				InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : PackedLodWeight); // Transmittance
+				InterlockedAdd(Weights[SlotIndex], PackedLodWeight);
+				InterlockedAdd(DepositCounts[Cascade * HashTableSize + ProbeIndex], PackedLodWeight);
+			}
 		}
 	}
-
-    //Output[PixelCoord] = float4(Radiance * 2*PI,1.0);
+	//Output[PixelCoord] = float4(Radiance * 2*PI,1.0);
 }

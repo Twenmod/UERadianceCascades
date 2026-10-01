@@ -23,7 +23,8 @@ bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
 	// TODO v_mul_hi_u32 to avoid integer division
 	// ( Index * HashTableSize ) >> 32
 
-	uint TableBase = Cascade * HashTableSize;
+    //Get offset of this cascade's hashtable
+    uint TableBase = Cascade * HashTableSize;
 	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
 
     Index = Index % CascadeTableSize;
@@ -70,7 +71,7 @@ bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 	// Zero is reserved as invalid
 	Key++;
 
-
+    //Get offset of this cascade's hashtable
 	uint TableBase = Cascade * HashTableSize;
 	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
     Index = Index % CascadeTableSize;
@@ -126,8 +127,9 @@ bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 //Limits from above sizes
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
 
-static const float kBaseVoxelSize = 32.0;
+static const float kBaseVoxelSize = 24.0;
 static const float kLevelBaseDist = 250.0;
+
 
 uint64_t KeyPack(uint Value, uint Shift, uint Bits)
 {
@@ -140,12 +142,24 @@ uint KeyUnpack(uint64_t Key, uint Shift, uint Bits)
     return (uint) ((Key >> Shift) & Mask);
 }
 
+void ComputeLevelRange(float3 WorldPos, float3 CameraPos, out uint2 Lods, out float2 LodWeights)
+{
+    float3 Distance = abs(WorldPos - CameraPos);
+    float Radius = max(Distance.x, max(Distance.y, Distance.z));
+    float LodFloat = max(log2(Radius / kLevelBaseDist), -0.9);
+    float Blend = min(1.0, (1.0 - frac(LodFloat)));
+	uint Lower = clamp((uint) ceil(LodFloat), 0, kMaxLevel);
+    Lods = uint2(Lower, Lower + 1);
+    LodWeights = float2(Blend, 1.0 - Blend);
+}
+
 uint ComputeLevel(float3 WorldPos, float3 CameraPos)
 {
     float3 Distance = abs(WorldPos - CameraPos);
     float Radius = max(Distance.x, max(Distance.y, Distance.z));
-    float L = log2(max(Radius / kLevelBaseDist, 1.0)); // base 2
-    return (uint) clamp(floor(L), 0.0, (float) kMaxLevel);
+    float LodFloat = max(log2(Radius / kLevelBaseDist), -0.9);
+    uint Lower = clamp((uint) ceil(LodFloat),0,kMaxLevel);
+    return Lower;
 }
 
 float LevelVoxelSize(uint Level)
