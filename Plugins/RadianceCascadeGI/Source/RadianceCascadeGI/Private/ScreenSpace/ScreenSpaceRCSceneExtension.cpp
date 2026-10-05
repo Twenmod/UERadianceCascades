@@ -37,7 +37,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 	const FScreenPassTexture& SceneColor = FScreenPassTexture::CopyFromSlice(GraphBuilder, Inputs.GetInput(EPostProcessMaterialInput::SceneColor));
 
-	if (!SceneColor.IsValid() || RC::CVarScreenspaceEnabled.GetValueOnRenderThread() == 0)
+	if (!SceneColor.IsValid() || RC::ScreenSpace::CVarEnabled.GetValueOnRenderThread() == 0)
 	{
 		return SceneColor;
 	}
@@ -45,7 +45,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 	auto SceneDesc = SceneColor.Texture->Desc;
 
-	uint32 TileSize = static_cast<uint32>(RC::CVarTileSize->GetInt());
+	uint32 TileSize = static_cast<uint32>(RC::ScreenSpace::CVarTileSize->GetInt());
 
 	//Get viewports
 	const FIntPoint SceneColorExtent = SceneColor.Texture->Desc.Extent;
@@ -153,7 +153,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 
 		FRDGBufferRef BitWeightLut = GraphBuilder.RegisterExternalBuffer(BitWeightLUTBuffer);
 		auto BitWeightLUTSRV = GraphBuilder.CreateSRV(BitWeightLut, PF_R32_FLOAT);
-		int BaseRayCount = RC::CVarRayCount->GetInt();
+		int BaseRayCount = RC::ScreenSpace::CVarRayCount->GetInt();
 
 		const FScreenPassTextureViewport CascadeViewport(
 			CascadeExtent, FIntRect(FIntPoint::ZeroValue, CascadeViewSize));
@@ -172,7 +172,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		FScreenPassTextureViewport TraceViewport(DepthTexture, ViewInfo.ViewRect);
 		FRDGTextureRef PreviousTexture = SystemTextures.Black;
 		FRDGTextureRef PreviousMaskTexture = SystemTextures.Black;
-		int Final = RC::CVarDisplayCascade->GetInt();
+		int Final = RC::ScreenSpace::CVarDisplayCascade->GetInt();
 
 		for (int i = CascadeCount - 1; i >= Final; --i)
 		{
@@ -201,9 +201,9 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 			MarchParametersCascade->Cascade = i;
 			MarchParametersCascade->CascadeCount = CascadeCount;
 			MarchParametersCascade->SceneTextures = SceneTextureParams;
-			MarchParametersCascade->IntervalMult = RC::CVarIntervalMult->GetFloat();
+			MarchParametersCascade->IntervalMult = RC::ScreenSpace::CVarIntervalMult->GetFloat();
 			MarchParametersCascade->TileSize = TileSize;
-			MarchParametersCascade->WallThickness = RC::CVarWallThickness->GetFloat();
+			MarchParametersCascade->WallThickness = RC::ScreenSpace::CVarWallThickness->GetFloat();
 			MarchParametersCascade->BitWeightLUT = BitWeightLUTSRV;
 			MarchParametersCascade->BlueNoise = CreateUniformBufferImmediate(
 				GetBlueNoiseGlobalParameters(),
@@ -232,7 +232,7 @@ FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilde
 		PassParameters->ProbeCascade = PreviousTexture;
 		PassParameters->SceneDepth = DepthTexture;
 		PassParameters->TileSize = TileSize;
-		PassParameters->Intensity = RC::CVarIntensity->GetFloat();
+		PassParameters->Intensity = RC::ScreenSpace::CVarIntensity->GetFloat();
 
 
 		// Use ScreenPassTextureViewportParameters so we don't need to calculate these ourselves

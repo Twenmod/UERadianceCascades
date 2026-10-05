@@ -17,11 +17,11 @@ RWStructuredBuffer<uint> Weights;
 RWStructuredBuffer<uint> BinCounts;
 RWStructuredBuffer<uint> DepositCounts;
 
-uint BaseDirections; // Currently assumed to be 32...
+uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
 
-static const uint NumCascades = 4;
-static const float C0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 32 directions
+static const uint kNumCascades = 4;
+static const float kC0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 4 base directions
 
 
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
@@ -99,13 +99,13 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 
 	//Split ray into probe
-	uint RayCascade = NumCascades - 1;
+	uint RayCascade = kNumCascades - 1;
 	if (Payload.IsHit())
 	{
 		uint Level = ComputeLevel(WorldPos, CameraPos);
 
-		float FCascade = ceil(max(0.5 * log2(Payload.HitT / (C0Len * LevelVoxelSize(Level))), 0.0));
-		RayCascade = min((uint)FCascade, NumCascades - 1);
+		float FCascade = ceil(max(0.5 * log2(Payload.HitT / (kC0Len * LevelVoxelSize(Level))), 0.0));
+		RayCascade = min((uint)FCascade, kNumCascades - 1);
 	}
 
 

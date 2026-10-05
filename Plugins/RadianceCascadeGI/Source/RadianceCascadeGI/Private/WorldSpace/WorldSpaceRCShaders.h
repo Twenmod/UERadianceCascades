@@ -24,6 +24,8 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -59,6 +61,8 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
 		RDG_BUFFER_ACCESS(IndirectArgsBuffer, ERHIAccess::IndirectArgs)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, Cascade)
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -79,10 +83,10 @@ public:
 };
 
 
-class FWorldSpaceRCRaygen : public FGlobalShader
+class FWorldSpaceRCRayBin : public FGlobalShader
 {
-	DECLARE_GLOBAL_SHADER(FWorldSpaceRCRaygen)
-	SHADER_USE_ROOT_PARAMETER_STRUCT(FWorldSpaceRCRaygen, FGlobalShader)
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCRayBin)
+	SHADER_USE_ROOT_PARAMETER_STRUCT(FWorldSpaceRCRayBin, FGlobalShader)
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneUniformParameters, Scene)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
@@ -91,6 +95,8 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(float, NormalOffset)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
@@ -142,6 +148,8 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, ActiveCounter)
 		RDG_BUFFER_ACCESS(IndirectArgsBuffer, ERHIAccess::IndirectArgs)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, Cascade)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
@@ -185,6 +193,9 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeMergedRadiance)
 		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
+		SHADER_PARAMETER(float, Intensity)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, DisplayCascade)
 		SHADER_PARAMETER(uint32, DebugOutputCells)

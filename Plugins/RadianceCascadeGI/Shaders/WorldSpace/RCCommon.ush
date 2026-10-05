@@ -1,18 +1,18 @@
 
-#define FLOAT_ATOMIC_PRECISION 0.00001
-#define FLOAT_ATOMIC_INV_PRECISION (1/FLOAT_ATOMIC_PRECISION)
+static const float kFloatPackPrecision = 0.00001;
+static const float kInvFloatPackPrecision = (1 / kFloatPackPrecision);
 
 uint PackFloatUnsigned(float Value)
 {
-	return Value*FLOAT_ATOMIC_INV_PRECISION;
+	return Value*kInvFloatPackPrecision;
 }
 
 float UnpackFloatUnsigned(uint Packed)
 {
-    return Packed * FLOAT_ATOMIC_PRECISION;
+    return Packed * kFloatPackPrecision;
 }
 
-static const float INV_TWO_PI = 0.15915494309189535;
+static const float kInvTwoPi = 0.15915494309189535;
 
 float NextFloatDown(float x)
 {
@@ -21,7 +21,7 @@ float NextFloatDown(float x)
 
 float2 EncodeDir(float3 d)
 {
-    return float2(frac(atan2(d.y, d.x) * INV_TWO_PI), (d.z + 1.0) * 0.5);
+    return float2(frac(atan2(d.y, d.x) * kInvTwoPi), (d.z + 1.0) * 0.5);
 }
 
 uint2 QuantizeDir(float2 uv, uint2 gridSize)
@@ -56,7 +56,7 @@ uint DirToLinear(float3 dir, uint DirectionCount)
     return EncodeMorton2(QuantizeDir(EncodeDir(dir), g) % g);
 }
 
-static const float TWO_PI = 6.28318530718;
+static const float kTwoPi = 6.28318530718;
 
 uint Compact1By1(uint x)
 {
@@ -75,7 +75,7 @@ uint2 DecodeMorton2(uint code)
 
 float3 DecodeDir(float2 uv)
 {
-    float phi = uv.x * TWO_PI;
+    float phi = uv.x * kTwoPi;
     float z = uv.y * 2.0 - 1.0;
     float r = sqrt(saturate(1.0 - z * z));
     float s, c;

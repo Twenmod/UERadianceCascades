@@ -19,6 +19,7 @@ uint DisplayCascade;
 
 uint BaseDirections;
 uint DebugOutputCells;
+float Intensity;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
@@ -150,7 +151,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-    Output[PixelId] += float4((RadSum / max(WeightSum,0.0001)) * GBufferData.BaseColor, 1) * PI;
+    Output[PixelId] += float4((RadSum / max(WeightSum,0.0001)) * GBufferData.BaseColor, 1) * Intensity;
 
 
 	//Debug output to see cells
