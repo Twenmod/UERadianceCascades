@@ -4,6 +4,24 @@
 #include "Engine/DeveloperSettings.h"
 #include "RCSettings.generated.h"
 
+UENUM()
+enum class ERCScreenSpaceQualityPreset : uint8
+{
+	Low      UMETA(DisplayName = "Low"),
+	Medium   UMETA(DisplayName = "Medium"),
+	High     UMETA(DisplayName = "High"),
+	Custom   UMETA(DisplayName = "Custom"),
+};
+UENUM()
+enum class ERCWorldSpaceQualityPreset : uint8
+{
+	Low      UMETA(DisplayName = "Low"),
+	Medium   UMETA(DisplayName = "Medium"),
+	High     UMETA(DisplayName = "High"),
+	Custom   UMETA(DisplayName = "Custom"),
+};
+
+
 UCLASS(config = Engine, defaultconfig, meta = (DisplayName = "Radiance Cascades"))
 class RADIANCECASCADEGI_API URCSettings : public UDeveloperSettings
 {
@@ -15,11 +33,17 @@ public:
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
+	//Screen space
 	UPROPERTY(EditAnywhere, config, Category = "Screen Space",
 		meta = (ConsoleVariable = "r.RC.ScreenSpace.Enabled",
 			DisplayName = "Enable Screen Space RC"))
-	bool bScreenSpaceEnabled = true;
 
+	bool bScreenSpaceEnabled = true;
+	UPROPERTY(EditAnywhere, config, Category = "Screen Space|Quality",
+		meta = (DisplayName = "Quality Preset",
+			ToolTip = "Presets for quality settings",
+			EditCondition = "bScreenSpaceEnabled"))
+	ERCScreenSpaceQualityPreset ScreenSpaceQualityPreset = ERCScreenSpaceQualityPreset::Medium;
 	UPROPERTY(EditAnywhere, config, Category = "Screen Space",
 		meta = (ConsoleVariable = "r.RC.ScreenSpace.Intensity",
 			DisplayName = "Intensity",
@@ -77,30 +101,35 @@ public:
 
 	UPROPERTY(EditAnywhere, config, Category = "World Space",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.Intensity", DisplayName = "Intensity",
-			Tooltip = "Multiply output result", ClampMin = "0", UIMin = "0", UIMax = "1"
+			Tooltip = "Multiply output result", ClampMin = "0", UIMin = "0", UIMax = "1", EditCondition = "bWorldSpaceEnabled"
 		))
 
 	float WsIntensity = 1.0;
 	UPROPERTY(EditAnywhere, config, Category = "World Space",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.NormalOffset",
 			DisplayName = "Normal offset",
-			Tooltip = "Offset rays from normal, avoids shadow acne", ClampMin = "0", UIMin = "0", UIMax = "10"
+			Tooltip = "Offset rays from normal, avoids shadow acne", ClampMin = "0", UIMin = "0", UIMax = "10", EditCondition = "bWorldSpaceEnabled"
 		))
 	float WsNormalOffset = 1.0;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
+		meta = (DisplayName = "Quality Preset",
+			ToolTip = "Presets for quality settings",
+			EditCondition = "bWorldSpaceEnabled"))
+	ERCWorldSpaceQualityPreset WorldSpaceQualityPreset = ERCWorldSpaceQualityPreset::Medium;
+	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.ProbeSize",
 			DisplayName = "Probe size",
-			Tooltip = "Probe size in CM at LOD 0", ClampMin = "1", UIMin = "4", UIMax = "32"))
+			Tooltip = "Probe size in CM at LOD 0", ClampMin = "1", UIMin = "4", UIMax = "32", EditCondition = "bWorldSpaceEnabled"))
 	float WsProbeSize = 8.0;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.ProbeHalfDistance",
 			DisplayName = "Probe half distance",
-			Tooltip = "Doubles probe size every X CM", ClampMin = "1", UIMin = "50", UIMax = "400"))
+			Tooltip = "Doubles probe size every X CM", ClampMin = "1", UIMin = "50", UIMax = "400", EditCondition = "bWorldSpaceEnabled"))
 	float WsProbeHalfDist = 250.0;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Debug",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.DisplayCascade",
 			DisplayName = "Display from cascade",
-			Tooltip = "Display from a specific cascade", ClampMin = "0", ClampMax = "3", UIMin = "0", UIMax = "3"))
+			Tooltip = "Display from a specific cascade", ClampMin = "0", ClampMax = "3", UIMin = "0", UIMax = "3", EditCondition = "bWorldSpaceEnabled"))
 	int32 WsDisplayCascade = 0;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Debug",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.DisplayProbes",
@@ -108,4 +137,13 @@ public:
 	bool bWorldSpaceProbeDebug = false;
 
 	virtual FName GetCategoryName() const override { return FName("Plugins"); }
+
+private:
+#if WITH_EDITOR
+	void SetSPPreset(ERCScreenSpaceQualityPreset Preset);
+	void SetWPPreset(ERCWorldSpaceQualityPreset Preset);
+	bool IsPresetVarSP(const FName& PropertyName);
+	bool IsPresetVarWP(const FName& PropertyName);
+	void UpdateConsole(FProperty& Property);
+#endif
 };
