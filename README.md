@@ -28,8 +28,8 @@ C++ compilation for unreal ([how to build the unreal editor](https://dev.epicgam
 Add [RadianceCascadeGI](./Plugins/RadianceCascadeGI) to your Projects Plugins folder 
 
 ### World space
-Set your Project Settings/Engine/Rendering/Global Illumination *Dynamic Global Illumination Method* to Plugin
- go to Project Settings/Plugins/Radiance Cascades/World space
+Set your Project Settings/Engine/Rendering/Global Illumination *Dynamic Global Illumination Method* to Plugin.
+Go to Project Settings/Plugins/Radiance Cascades/World space
 and set *Enabled* to *true*
 
 ### Screen space
