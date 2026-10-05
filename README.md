@@ -18,7 +18,7 @@ A single bounce screen space version that is very fast but only works on visible
 ### Requirements
 Plugin was made for unreal 5.8.2
 
-Requires GPU feature level SM5
+Requires GPU feature level SM6
 
 World space requires HW Raytracing support
 
