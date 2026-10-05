@@ -22,7 +22,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		}));
 }
 
-static constexpr uint32 HashTableSize = 8192;
+static constexpr uint32 HashTableSize = 1024*16;
 static constexpr uint32 DirectionCount = 4;
 static constexpr uint32 Cascades = 4;
 
@@ -72,7 +72,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		                     TEXT("RC Cascade Probes Total Radiance and transmittance"));
 
 		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 3, Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
+			sizeof(float) * 4, Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
 		AllocatePooledBuffer(ProbeMergedRadBufferDesc, ProbeMergedRadianceBuffer,
 		                     TEXT("RC Cascade Probes Merged Radiance"));
 
@@ -234,6 +234,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			RGParams->DepositCounts = DepositCountBufferUAV;
 			RGParams->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
 			RGParams->BaseDirections = DirectionCount;
+			RGParams->NormalOffset = RC::CVarNormalOffset.GetValueOnRenderThread();
 			const FSceneTextures& SceneTex = ViewInfo.GetSceneTextures();
 			RGParams->SceneTextures.SceneDepthTexture = SceneTex.Depth.Resolve;
 			RGParams->SceneTextures.GBufferATexture = SceneTex.GBufferA;
@@ -335,6 +336,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		ApplyPassParameters->Output = Output;
 		ApplyPassParameters->DisplayCascade = RC::CVarDisplayCascade.GetValueOnAnyThread();
 		ApplyPassParameters->ProbeMergedRadiance = GraphBuilder.CreateSRV(MergedRadianceBuffer);
+		ApplyPassParameters->ProbeDepositCount = DepositCountBufferSRV;
+		ApplyPassParameters->DebugOutputCells = RC::CVarDisplayProbes.GetValueOnAnyThread();
 		TShaderMapRef<FWorldSpaceRCApply> ApplyCS(GlobalShaderMap);
 
 		FComputeShaderUtils::AddPass(

@@ -10,4 +10,6 @@ namespace RC
 	extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarIntervalMult;
 	extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarWallThickness;
 	extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarIntensity;
+	extern RADIANCECASCADEGI_API TAutoConsoleVariable<int32> CVarDisplayProbes;
+	extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarNormalOffset;
 }

@@ -12,10 +12,13 @@ RWTexture2D<float4> Output;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
-StructuredBuffer<float3> ProbeMergedRadiance;
+StructuredBuffer<float4> ProbeMergedRadiance;
+StructuredBuffer<uint> ProbeDepositCount;
+
 uint DisplayCascade;
 
 uint BaseDirections;
+uint DebugOutputCells;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
@@ -93,14 +96,14 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 		{
 			break;
 		}
-        float LodVoxel = LevelVoxelSize(LevelRange[Level]) * float(1u << DisplayCascade);
-        float3 FloatCell = WorldPos / LodVoxel - 0.5;
-        int3 Cell = int3(floor(FloatCell));
-        float3 Frac = FloatCell - float3(Cell);
+		float LodVoxel = LevelVoxelSize(LevelRange[Level]) * float(1u << DisplayCascade);
+		float3 FloatCell = WorldPos / LodVoxel - 0.5;
+		int3 Cell = int3(floor(FloatCell));
+		float3 Frac = FloatCell - float3(Cell);
 
 		for (uint c = 0; c < 8; ++c)
 		{
-            int3 Corner = (Cell) + int3(c & 1, (c >> 1) & 1, c >> 2);
+			int3 Corner = (Cell) + int3(c & 1, (c >> 1) & 1, c >> 2);
 			float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
 			float InterpWeight = T.x * T.y * T.z;
 
@@ -109,6 +112,11 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 
 			if (HashTableFind(CascadeKey, Index, DisplayCascade))
 			{
+                uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
+                if (DepositCount <= 0)
+                {
+                    continue;
+                }
 				uint DirectionCount = BaseDirections << DisplayCascade;
 
 				float3 TotalRadiance = 0;
@@ -124,16 +132,35 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 					}
 					uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
 					uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
-					TotalRadiance += ProbeMergedRadiance[BuffIndex] * NdotL;
-					TotalWeight += NdotL;
+					float4 MergedRad = ProbeMergedRadiance[BuffIndex];
+					if (MergedRad.w > 0.0)
+					{
+                        float Weight = NdotL * UnpackFloatUnsigned(DepositCount);
+                        TotalRadiance += MergedRad.xyz * Weight;
+						TotalWeight += Weight;
+					}
 				}
 				//Renormalize over hemisphere
-				TotalRadiance /= float(BinsPerProbe(DirectionCount));
-                RadSum += TotalWeight >= 0 ? (TotalRadiance/TotalWeight) * InterpWeight * LodWeights[Level] : 0;
-				WeightSum += InterpWeight * (LodWeights[Level]);
+				if (TotalWeight > 0.0)
+				{
+					RadSum += TotalWeight >= 0 ? (TotalRadiance / TotalWeight) * InterpWeight * LodWeights[Level] : 0;
+					WeightSum += InterpWeight * (LodWeights[Level]);
+				}
 			}
 		}
 	}
 
-	Output[PixelId] += float4((RadSum / WeightSum) * GBufferData.BaseColor, 1) * PI;
+    Output[PixelId] += float4((RadSum / max(WeightSum,0.0001)) * GBufferData.BaseColor, 1) * PI;
+
+
+	//Debug output to see cells
+	if (DebugOutputCells == 1)
+	{
+		uint64_t DebugKey = MakeProbeKey(WorldPos, CameraPos);
+		uint DebugIndex = MurmurFinalize32(uint(DebugKey) ^ MurmurFinalize32(uint(DebugKey >> 32)));
+		if (HashTableFind(DebugKey, DebugIndex, DisplayCascade))
+		{
+			Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
+		}
+	}
 }

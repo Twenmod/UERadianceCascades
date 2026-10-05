@@ -16,7 +16,7 @@ StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
 StructuredBuffer<uint> ProbeDepositCount;
 
-RWStructuredBuffer<float3> ProbeMergedRadiance;
+RWStructuredBuffer<float4> ProbeMergedRadiance;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
@@ -54,7 +54,7 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
 		//Load own Radiance
 		uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + i;
 
-        float Weight = UnpackFloatUnsigned(ProbeWeights[SlotIndex]);
+		float Weight = UnpackFloatUnsigned(ProbeWeights[SlotIndex]);
 		uint4 PackedRadiance = ProbeRadiance[SlotIndex];
 		float3 CurrentRadiance = float3(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y),
 		                                UnpackFloatUnsigned(PackedRadiance.z)) / Weight;
@@ -85,18 +85,23 @@ RWStructuredBuffer<float3> ProbeMergedRadiance;
 				}
 
 				//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
-				float3 DirRadiance = 0;
+				float4 DirRadiance = 0;
 				for (uint d = 0; d < 4; ++d)
 				{
 					uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + d;
 					DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
 				}
-				float QualityInterpWeight = InterpWeight * UnpackFloatUnsigned(DepositCount);
-				ParentRadianceSum += (DirRadiance * 0.25) * QualityInterpWeight;
-				ParentRadianceWeight += QualityInterpWeight;
+				if (DirRadiance.w > 0.0)
+				{
+					float QualityInterpWeight = InterpWeight * UnpackFloatUnsigned(DepositCount);
+					ParentRadianceSum += (DirRadiance.xyz / DirRadiance.w) * QualityInterpWeight;
+					ParentRadianceWeight += QualityInterpWeight;
+				}
 			}
 		}
 		float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
-		ProbeMergedRadiance[SlotIndex] = (Weight <= 0.0001) ? 0 : CurrentRadiance + ParentRadiance * TransmittedWeight;
+		ProbeMergedRadiance[SlotIndex] = (Weight <= 0.0001)
+			                                 ? 0
+			                                 : float4(CurrentRadiance + ParentRadiance * TransmittedWeight, 1);
 	}
 }

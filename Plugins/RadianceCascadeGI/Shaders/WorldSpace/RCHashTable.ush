@@ -127,7 +127,7 @@ bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
 //Limits from above sizes
 static const uint kMaxLevel = (1u << KEY_BITS_LEVEL) - 1u;
 
-static const float kBaseVoxelSize = 24.0;
+static const float kBaseVoxelSize = 8.0;
 static const float kLevelBaseDist = 250.0;
 
 

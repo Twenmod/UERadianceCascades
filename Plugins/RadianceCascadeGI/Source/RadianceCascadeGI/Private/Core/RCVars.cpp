@@ -15,6 +15,18 @@ namespace RC
 			0,
 			TEXT("Display a specific cascade \n"),
 			ECVF_RenderThreadSafe);
+		TAutoConsoleVariable<int32> CVarDisplayProbes(
+			TEXT("r.RC.WorldSpace.DisplayProbes"),
+			0,
+			TEXT("Display world space probes\n")
+			TEXT(" 0: OFF;")
+			TEXT(" 1: ON."),
+			ECVF_RenderThreadSafe);
+		TAutoConsoleVariable<float> CVarNormalOffset(
+			TEXT("r.RC.WorldSpace.NormalOffset"),
+			1.0,
+			TEXT("Ray normal offset\n"),
+			ECVF_RenderThreadSafe);
 		TAutoConsoleVariable<int32> CVarRayCount(
 			TEXT("r.RC.RayCount"),
 			4,

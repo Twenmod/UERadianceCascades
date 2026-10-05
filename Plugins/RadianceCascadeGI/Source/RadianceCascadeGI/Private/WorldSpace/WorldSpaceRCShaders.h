@@ -92,6 +92,7 @@ class FWorldSpaceRCRaygen : public FGlobalShader
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, BaseDirections)
+		SHADER_PARAMETER(float, NormalOffset)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
@@ -146,7 +147,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, ProbeMergedRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, ProbeMergedRadiance)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -181,10 +182,12 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, ProbeMergedRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeMergedRadiance)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, DisplayCascade)
+		SHADER_PARAMETER(uint32, DebugOutputCells)
 
 	END_SHADER_PARAMETER_STRUCT()
 
