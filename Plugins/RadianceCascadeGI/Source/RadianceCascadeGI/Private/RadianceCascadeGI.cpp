@@ -8,6 +8,8 @@
 #endif
 #define LOCTEXT_NAMESPACE "FRadianceCascadeGIModule"
 #include "DeferredShadingRenderer.h"
+#include "Core/RCLog.h"
+#include "Core/RCVars.h"
 
 void FRadianceCascadeGIModule::StartupModule()
 {
@@ -25,12 +27,16 @@ void FRadianceCascadeGIModule::StartupModule()
 		*GEngineIni,
 		ECVF_SetByProjectSetting);
 
-
-	RTPassHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing()
-		.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::PrepareRayTracing);
-	GIPassHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
-		.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::RenderDiffuseIndirectLight);
-
+		RTPassHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing()
+			.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::PrepareRayTracing);
+		GIPassHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight()
+			.AddRaw(&WorldSpaceRC, &FWorldSpaceRCGi::RenderDiffuseIndirectLight);
+		RTEnabledHandle = FGlobalIlluminationPluginDelegates::AnyRayTracingPassEnabled().AddLambda(
+			[](bool& bAnyRayTracingPassEnabled)
+			{
+				if (RC::WorldSpace::CVarEnabled.GetValueOnRenderThread())
+					bAnyRayTracingPassEnabled = true;
+			});
 	//Hot reload debugging todo: remove
 #if WITH_EDITOR
 	WatchedShaderDir = WSPluginShaderDir;
@@ -52,7 +58,8 @@ void FRadianceCascadeGIModule::ShutdownModule()
 		.Remove(GIPassHandle);
 	FGlobalIlluminationPluginDelegates::PrepareRayTracing()
 		.Remove(RTPassHandle);
-
+	FGlobalIlluminationPluginDelegates::AnyRayTracingPassEnabled().Remove(RTEnabledHandle);
+	
 #if WITH_EDITOR
 	if (WatcherHandle.IsValid())
 	{

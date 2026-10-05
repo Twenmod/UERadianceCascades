@@ -38,7 +38,7 @@ public:
 		meta = (ConsoleVariable = "r.RC.ScreenSpace.Enabled",
 			DisplayName = "Enable Screen Space RC"))
 
-	bool bScreenSpaceEnabled = true;
+	bool bScreenSpaceEnabled = false;
 	UPROPERTY(EditAnywhere, config, Category = "Screen Space|Quality",
 		meta = (DisplayName = "Quality Preset",
 			ToolTip = "Presets for quality settings",

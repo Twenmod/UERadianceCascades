@@ -28,6 +28,7 @@ public:
 	FDelegateHandle WatcherHandle;
 	FDelegateHandle RTPassHandle;
 	FDelegateHandle GIPassHandle;
+	FDelegateHandle RTEnabledHandle;
 	FString WatchedShaderDir;
 	bool bRecompilePending = false;
 #endif

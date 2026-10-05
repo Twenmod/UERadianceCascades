@@ -5,6 +5,7 @@
 #include "RenderTargetPool.h"
 #include "SceneRendering.h"
 #include "SceneTextureParameters.h"
+#include "Core/RCLog.h"
 
 #include "Core/RCVars.h"
 
@@ -30,6 +31,11 @@ void FScreenSpaceRCSceneExtension::SubscribeToPostProcessingPass(EPostProcessing
 
 FScreenPassTexture FScreenSpaceRCSceneExtension::CustomPostProcessing(FRDGBuilder& GraphBuilder, const FSceneView& SceneView, const FPostProcessMaterialInputs& Inputs)
 {
+	//Capability checks
+	if (IsForwardShadingEnabled(SceneView.GetShaderPlatform()))
+	{
+		UE_LOG(LogRC, Log, TEXT("RC GI Requires Deferred shading"));
+	}
 
 	// SceneViewExtension gives SceneView, not ViewInfo so we need to setup some basics
 	const FSceneViewFamily& ViewFamily = *SceneView.Family;

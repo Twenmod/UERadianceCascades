@@ -39,8 +39,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
 	float3 N = GBuffer.WorldNormal;
 	FRayDesc Ray;
-	Ray.Origin = TranslatedWorldPos + N *NormalOffset;
-	Ray.TMin = 0.1;
+	Ray.Origin = TranslatedWorldPos + N * NormalOffset;
+	Ray.TMin = 0.001;
 	Ray.TMax = 100000.0;
 
 	float3 WorldPos = DFFastSubtractDemote(TranslatedWorldPos, PrimaryView.PreViewTranslation);
@@ -61,7 +61,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	InterlockedAdd(BinCounts[TopSlotIndex], 1, BinIndex);
 
 	FRandomSequence RandSequence;
-	RandomSequence_Initialize(RandSequence, PixelCoord, BinIndex+1, 0, 1);
+	RandomSequence_Initialize(RandSequence, PixelCoord, BinIndex + 1, 0, 1);
 
 	FRayCone RayCone = (FRayCone)0;
 	RayCone.SpreadAngle = View.
@@ -136,8 +136,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 				uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
 				uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(
 					Dir.xyz, DirectionCount);
-				float3 Rad = HitCascade ? float3(0,0,0) : Radiance * LodWeights[Level];
-                uint PackedLodWeight = PackFloatUnsigned(LodWeights[Level]);
+				float3 Rad = HitCascade ? Radiance * LodWeights[Level] : float3(0, 0, 0);
+				uint PackedLodWeight = PackFloatUnsigned(LodWeights[Level]);
 				//Pack to uints to use atomics
 				InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));
 				InterlockedAdd(TotalRadiance[SlotIndex].y, PackFloatUnsigned(Rad.y));

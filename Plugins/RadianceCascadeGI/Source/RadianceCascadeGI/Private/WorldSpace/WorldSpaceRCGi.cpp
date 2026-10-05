@@ -44,11 +44,21 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
                                                  FGlobalIlluminationPluginResources& Resources)
 {
 	if (!RC::WorldSpace::CVarEnabled.GetValueOnRenderThread()) return;
+
+	//Capability checks
 	if (!IsRayTracingEnabled() || !ViewInfo.HasRayTracingScene())
 	{
 		UE_LOG(LogRC, Log, TEXT("No RT available, cannot do GI"));
 		return;
 	}
+	if (ViewInfo.GetFeatureLevel() < ERHIFeatureLevel::SM6) {
+		UE_LOG(LogRC, Log, TEXT("No SM6 support cannot do RC GI"));
+	}
+	if (IsForwardShadingEnabled(ViewInfo.GetShaderPlatform()))
+	{
+		UE_LOG(LogRC, Log, TEXT("RC GI Requires Deferred shading"));
+	}
+	if (ViewInfo.bIsSceneCapture || ViewInfo.bIsReflectionCapture || ViewInfo.bIsPlanarReflection) return;
 
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
