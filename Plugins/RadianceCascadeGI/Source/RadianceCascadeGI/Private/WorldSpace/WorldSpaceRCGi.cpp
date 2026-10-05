@@ -35,7 +35,7 @@ void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTra
 	}
 
 	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(View.GetFeatureLevel());
-	TShaderMapRef<FWorldSpaceRCRaygen> RayGenShader(ShaderMap);
+	TShaderMapRef<FWorldSpaceRCRayBin> RayGenShader(ShaderMap);
 	OutRayGenShaders.Add(RayGenShader.GetRayTracingShader());
 }
 
@@ -231,9 +231,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 		//Trace the scene per pixel and split into probes
 		{
-			TShaderMapRef<FWorldSpaceRCRaygen> RayGenShader(GlobalShaderMap);
-			FWorldSpaceRCRaygen::FParameters* RGParams = GraphBuilder.AllocParameters<
-				FWorldSpaceRCRaygen::FParameters>();
+			TShaderMapRef<FWorldSpaceRCRayBin> RayGenShader(GlobalShaderMap);
+			FWorldSpaceRCRayBin::FParameters* RGParams = GraphBuilder.AllocParameters<
+				FWorldSpaceRCRayBin::FParameters>();
 			RGParams->Output = Output;
 			RGParams->HashTableSize = HashTableSize;
 			RGParams->HashTable = HashTableSRV;
