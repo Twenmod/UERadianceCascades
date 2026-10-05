@@ -15,6 +15,13 @@ A single bounce screen space version that is very fast but only works on visible
 
 
 ## Installation
+### Requirements
+Plugin was made for unreal 5.8.2
+Requires GPU feature level SM5
+World space requires HW Raytracing support
+C++ compilation for unreal ([how to build the unreal editor](https://dev.epicgames.com/community/learning/tutorials/k8Ve/unreal-engine-how-to-build-the-unreal-editor))
+
+### Plugin
 Add [RadianceCascadeGI](./Plugins/RadianceCascadeGI) to your Projects Plugins folder 
 
 ### World space
