@@ -44,12 +44,16 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
                                                  FGlobalIlluminationPluginResources& Resources)
 {
 	if (!RC::WorldSpace::CVarEnabled.GetValueOnRenderThread()) return;
+	if (!IsRayTracingEnabled() || !ViewInfo.HasRayTracingScene())
+	{
+		UE_LOG(LogRC, Log, TEXT("No RT available, cannot do GI"));
+		return;
+	}
 
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
 
-	const FRDGSystemTextures& SystemTextures = FRDGSystemTextures::Get(GraphBuilder);
-
+	//Initialize pooled resources
 	if (!bInitialized)
 	{
 		//Create Hashmaps for probes
@@ -57,45 +61,18 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), HashTableSize * Cascades);
 		AllocatePooledBuffer(HTDesc, HashTableCascade, TEXT("RC Cascade Hashmap"));
 
-		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), HashTableSize);
-
-		FRDGBufferDesc ActiveProbesCounterDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 1);
-		ActiveProbes.SetNum(Cascades);
-		ActiveProbeCounters.SetNum(Cascades);
-		for (int i = 0; i < Cascades; ++i)
-		{
-			AllocatePooledBuffer(ActiveProbesDesc, ActiveProbes[i], TEXT("RC Active Probes"));
-			AllocatePooledBuffer(ActiveProbesCounterDesc, ActiveProbeCounters[i], TEXT("RC Active Probes"));
-		}
-
+		//Allocate probes
 		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(uint32) * 4, Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
 		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer,
 		                     TEXT("RC Cascade Probes Total Radiance and transmittance"));
-
-		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 4, Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
-		AllocatePooledBuffer(ProbeMergedRadBufferDesc, ProbeMergedRadianceBuffer,
-		                     TEXT("RC Cascade Probes Merged Radiance"));
-
-		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
-		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer, TEXT("RC Cascade Probes Weight"));
-
-		FRDGBufferDesc ProbeBinCountDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), HashTableSize);
-		AllocatePooledBuffer(ProbeBinCountDesc, ProbeBinCounterBuffer, TEXT("RC Probe R2 Bin Count"));
 
 		FRDGBufferDesc ProbeDepositCountDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(uint32), Cascades * HashTableSize);
 		AllocatePooledBuffer(ProbeDepositCountDesc, ProbeDepositCountBuffer, TEXT("RC Cascade Probe Ray Deposit Count"));
 	}
 
-	if (!IsRayTracingEnabled() || !ViewInfo.HasRayTracingScene())
-	{
-		UE_LOG(LogRC, Log, TEXT("No RT available, cannot do GI"));
-		return;
-	}
+
 
 	const FScreenPassTexture SceneColor(Resources.SceneColor, ViewInfo.ViewRect);
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
@@ -108,6 +85,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(),
 		                                                             ViewInfo.GetFeatureLevel());
 		auto Output = GraphBuilder.CreateUAV(Resources.SceneColor);
+
+		//Import pooled buffers
 		//Clear hash
 		auto HashTable = GraphBuilder.RegisterExternalBuffer(HashTableCascade);
 		auto HashTableUAV = GraphBuilder.CreateUAV(HashTable);
@@ -119,23 +98,29 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto RadianceUAV = GraphBuilder.CreateUAV(RadianceBuffer);
 		auto RadianceSRV = GraphBuilder.CreateSRV(RadianceBuffer);
 		AddClearUAVPass(GraphBuilder, RadianceUAV, 0);
-		//And weights
-		auto WeightBuffer = GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer);
-		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
-		auto WeightSRV = GraphBuilder.CreateSRV(WeightBuffer);
-		AddClearUAVPass(GraphBuilder, WeightUAV, 0);
 
-
-		//Clear bin counter
-		auto BinCountBuffer = GraphBuilder.RegisterExternalBuffer(ProbeBinCounterBuffer);
-		auto BinCountBufferUAV = GraphBuilder.CreateUAV(BinCountBuffer);
-		auto BinCountBufferSRV = GraphBuilder.CreateSRV(BinCountBuffer);
-		AddClearUAVPass(GraphBuilder, BinCountBufferUAV, 0);
 		//Clear deposit counter
 		auto DepositCountBuffer = GraphBuilder.RegisterExternalBuffer(ProbeDepositCountBuffer);
 		auto DepositCountBufferUAV = GraphBuilder.CreateUAV(DepositCountBuffer);
 		auto DepositCountBufferSRV = GraphBuilder.CreateSRV(DepositCountBuffer);
 		AddClearUAVPass(GraphBuilder, DepositCountBufferUAV, 0);
+
+		//Create RDG buffers
+
+		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
+		auto WeightBuffer = GraphBuilder.CreateBuffer(ProbeWeightBufferDesc, TEXT("RC Cascade Probe weights"));
+		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
+		auto WeightSRV = GraphBuilder.CreateSRV(WeightBuffer);
+		AddClearUAVPass(GraphBuilder, WeightUAV, 0);
+
+		FRDGBufferDesc ProbeBinCountDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), HashTableSize);
+		auto BinCountBuffer = GraphBuilder.CreateBuffer(ProbeBinCountDesc, TEXT("RC Probe R2 bin count"));
+		auto BinCountBufferUAV = GraphBuilder.CreateUAV(BinCountBuffer);
+		auto BinCountBufferSRV = GraphBuilder.CreateSRV(BinCountBuffer);
+		AddClearUAVPass(GraphBuilder, BinCountBufferUAV, 0);
+
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize,
@@ -153,12 +138,15 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		RDGActiveProbeCounts.SetNum(Cascades);
 		ActiveProbeCountUAVs.SetNum(Cascades);
 		ActiveProbeCountSRVs.SetNum(Cascades);
+
+		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), HashTableSize);
+		FRDGBufferDesc ActiveProbesCounterDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), 1);
 		for (int i = 0; i < Cascades; ++i)
 		{
-			RDGActiveProbes[i] = GraphBuilder.RegisterExternalBuffer(ActiveProbes[i]);
+			RDGActiveProbes[i] = GraphBuilder.CreateBuffer(ActiveProbesDesc, TEXT("RC Active probes"));
 			ActiveProbeUAVs[i] = GraphBuilder.CreateUAV(RDGActiveProbes[i]);
 			ActiveProbeSRVs[i] = GraphBuilder.CreateSRV(RDGActiveProbes[i]);
-			RDGActiveProbeCounts[i] = GraphBuilder.RegisterExternalBuffer(ActiveProbeCounters[i]);
+			RDGActiveProbeCounts[i] = GraphBuilder.CreateBuffer(ActiveProbesCounterDesc, TEXT("RC Active probes counter"));
 			ActiveProbeCountUAVs[i] = GraphBuilder.CreateUAV(RDGActiveProbeCounts[i]);
 			ActiveProbeCountSRVs[i] = GraphBuilder.CreateSRV(RDGActiveProbeCounts[i]);
 		}
@@ -292,7 +280,11 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 
 		//Merge probes down
-		auto MergedRadianceBuffer = GraphBuilder.RegisterExternalBuffer(ProbeMergedRadianceBuffer);
+
+
+		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 4, Cascades * HashTableSize * (DirectionCount * 2 * DirectionCount));
+		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc, TEXT("RC Probe Merged radiance+weight"));
 		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
 		AddClearUAVPass(GraphBuilder, MergedRadianceUAV, 0);
 
