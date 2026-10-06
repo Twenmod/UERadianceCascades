@@ -48,10 +48,9 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	uint64_t TopKey = MakeProbeKey(WorldPos, CameraPos);
 
-	uint TopProbeIndex = MurmurFinalize32(uint(TopKey) ^ MurmurFinalize32(uint(TopKey >> 32)));
-	bool InProbe = HashTableFind(TopKey, TopProbeIndex, 0);
+	uint TopProbeIndex = HashTableFind(TopKey, 0);
 
-	if (!InProbe)
+	if (TopProbeIndex >= HashTableSize)
 	{
 		//Shouldn't really be possible
 		return;
@@ -126,8 +125,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		{
 			uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> (Cascade + Level), LevelRange[Level]);
 
-			uint ProbeIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-			if (HashTableFind(CascadeKey, ProbeIndex, Cascade))
+			uint ProbeIndex = HashTableFind(CascadeKey, Cascade);
+			if (ProbeIndex < HashTableSize)
 			{
 				bool HitCascade = (Cascade == RayCascade);
 

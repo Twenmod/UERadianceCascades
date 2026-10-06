@@ -23,14 +23,14 @@ RWStructuredBuffer<float4> ProbeMergedRadiance;
 	uint ProbeId = DispatchThreadId;
 
 	// Check that we are in scope
-	if (ProbeId >= ActiveCounter[0])
+	if (ProbeId >= ActiveCounter[Cascade])
 	{
 		return;
 	}
 
 	//Blend higher cascade
-	uint ProbeIndex = ActiveProbes[ProbeId];
-	uint64_t ProbeKey = HashTable[(Cascade) * HashTableSize + ProbeIndex] - 1;
+	uint ProbeIndex = ActiveProbes[Cascade*HashTableSize+ProbeId];
+	uint64_t ProbeKey = TableKeys[(Cascade) * HashTableSize + ProbeIndex] - 1;
 	// The -1 is since keys cannot be 0 so hashtableadd adds 1
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
@@ -73,9 +73,9 @@ RWStructuredBuffer<float4> ProbeMergedRadiance;
 
 
 			uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
-			uint ParentIndex = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
 
-			if (HashTableFind(CascadeKey, ParentIndex, Cascade + 1))
+            uint ParentIndex = HashTableFind(CascadeKey, Cascade + 1);
+            if (ParentIndex < HashTableSize)
 			{
 				//Amount of rays this probe got, so lower ones are low quality
 				uint DepositCount = ProbeDepositCount[((Cascade + 1) * HashTableSize) + ParentIndex];

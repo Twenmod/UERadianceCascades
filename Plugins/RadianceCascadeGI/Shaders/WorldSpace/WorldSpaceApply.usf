@@ -109,9 +109,8 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 			float InterpWeight = T.x * T.y * T.z;
 
 			uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
-			uint Index = MurmurFinalize32(uint(CascadeKey) ^ MurmurFinalize32(uint(CascadeKey >> 32)));
-
-			if (HashTableFind(CascadeKey, Index, DisplayCascade))
+            uint Index = HashTableFind(CascadeKey, DisplayCascade);
+			if (Index < HashTableSize)
 			{
                 uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
                 if (DepositCount <= 0)
@@ -158,10 +157,8 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	if (DebugOutputCells == 1)
 	{
 		uint64_t DebugKey = MakeProbeKey(WorldPos, CameraPos);
-		uint DebugIndex = MurmurFinalize32(uint(DebugKey) ^ MurmurFinalize32(uint(DebugKey >> 32)));
-		if (HashTableFind(DebugKey, DebugIndex, DisplayCascade))
-		{
-			Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
-		}
+        uint DebugIndex = HashTableFind(DebugKey, DisplayCascade);
+        Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
+
 	}
 }

@@ -6,8 +6,6 @@
 
 
 // Shader parameters
-StructuredBuffer<uint> PrevActiveProbes;
-StructuredBuffer<uint> PrevActiveCounter;
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
@@ -20,25 +18,28 @@ uint Cascade;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
-	
-    uint ProbeId = DispatchThreadId;
-	
+	uint ProbeId = DispatchThreadId;
+
 	// Check that we are in scope
-    if (ProbeId >= PrevActiveCounter[0])
-        return;
+	if (ProbeId >= ActiveCounter[Cascade - 1])
+	{
+		return;
+	}
 
+	//Split key into higher cascade
+	uint64_t ProbeKey = TableKeys[(Cascade - 1) * HashTableSize + ActiveProbes[((Cascade - 1) * HashTableSize) +
+		ProbeId]];
 
-    //Split key into higher cascade
-    uint64_t ProbeKey = RWHashTable[(Cascade-1) * HashTableSize + PrevActiveProbes[ProbeId]]-1; // The -1 is since keys cannot be 0 so hashtableadd adds 1
-    ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
+	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
-    uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
-    //Index to keep things seperate avoiding conflicts
-    uint Index = MurmurFinalize32(uint(HighKey) ^ MurmurFinalize32(uint(HighKey >> 32)));
-    if (HashTableAdd(HighKey, Index, Cascade))
-    {
-	    uint Counter;
-	    InterlockedAdd(ActiveCounter[0], 1, Counter);
-	    ActiveProbes[Counter] = Index;
-    }
+    //Get parent key by halving position
+	uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
+    uint Index = HashTableSize;
+    if (HashTableAdd(HighKey, Cascade, Index))
+	{
+		//Update indirect buffer
+		uint Counter;
+		InterlockedAdd(ActiveCounter[Cascade], 1, Counter);
+		ActiveProbes[(Cascade * HashTableSize) + Counter] = Index;
+	}
 }

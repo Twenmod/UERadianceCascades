@@ -20,10 +20,14 @@ public:
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
-		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 	END_SHADER_PARAMETER_STRUCT()
@@ -54,13 +58,15 @@ public:
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, RWHashTable)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveProbes)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, PrevActiveCounter)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
 		RDG_BUFFER_ACCESS(IndirectArgsBuffer, ERHIAccess::IndirectArgs)
-		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, Cascade)
@@ -94,12 +100,16 @@ class FWorldSpaceRCRayBin : public FGlobalShader
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
-		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(float, NormalOffset)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, BinCounts)
@@ -143,11 +153,15 @@ public:
 	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCMerging, FGlobalShader)
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, ActiveProbes)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint32>, ActiveCounter)
 		RDG_BUFFER_ACCESS(IndirectArgsBuffer, ERHIAccess::IndirectArgs)
-		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)		
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(uint32, Cascade)
@@ -171,7 +185,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 1);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
-	static constexpr uint32 GroupCount = 64;
+	static constexpr uint32 GroupCount = 128;
 };
 
 
@@ -187,12 +201,16 @@ public:
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, SceneColorViewport)
 		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint64_t>, HashTable)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeMergedRadiance)
-		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(float, Intensity)
@@ -213,6 +231,75 @@ public:
 	{
 		OutEnvironment.SetDefine(TEXT("THREADS_X"), 8);
 		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 8);
+		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
+	}
+};
+
+
+class RADIANCECASCADEGI_API FWorldSpaceRCBuildFreeList : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCBuildFreeList)
+
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCBuildFreeList, FGlobalShader)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters,)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(uint32, NumCascades)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableLastOccupiedIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ActiveProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ActiveCounter)
+	END_SHADER_PARAMETER_STRUCT()
+
+	// Basic shader initialization
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM6);
+	}
+
+	// Define environment variables used by compute shader
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 64);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 1);
+		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
+	}
+};
+
+
+
+
+class RADIANCECASCADEGI_API FWorldSpaceRCClearFreeList : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCClearFreeList)
+
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCClearFreeList, FGlobalShader)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
+	END_SHADER_PARAMETER_STRUCT()
+
+	// Basic shader initialization
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM6);
+	}
+
+	// Define environment variables used by compute shader
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 4); //This assumes cascades == 4
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 1);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
 };

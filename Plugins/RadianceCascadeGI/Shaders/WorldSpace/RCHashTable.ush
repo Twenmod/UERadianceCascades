@@ -6,102 +6,135 @@
 
 #include "/Engine/Public/Platform.ush"
 
-// Linear probing hash table
+RWStructuredBuffer<uint64_t> TableKeys;
+RWStructuredBuffer<uint> TableFreeList;
+RWStructuredBuffer<uint> TableFreeListIndex;
 
-StructuredBuffer<uint64_t> HashTable;
-RWStructuredBuffer<uint64_t> RWHashTable;
+RWStructuredBuffer<uint64_t> TableEntryKeys;
+RWStructuredBuffer<uint> TableEntryIndex;
 uint HashTableSize;
 
+
+//Hash function
+uint MurmurFinalize32(uint h)
+{
+    h ^= h >> 16;
+    h *= 0x85ebca6bu;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35u;
+    h ^= h >> 16;
+    return h;
+}
+
+
+static const uint64_t kInvalidKey = 0;
+
 // Returns true if key is added for the first time.
-// Index input is the first hash table bucket to look in.
-// Index output is the hash table bucket this key is stored in.
-bool HashTableAdd(uint64_t Key, inout uint Index, uint Cascade)
+bool HashTableAdd(uint64_t Key, uint Cascade, out uint OutIndex)
 {
-	// Zero is reserved as invalid
-	Key++;
-
-	// TODO v_mul_hi_u32 to avoid integer division
-	// ( Index * HashTableSize ) >> 32
 
 	//Get offset of this cascade's hashtable
-	uint TableBase = Cascade * HashTableSize;
-	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
-
-	Index = Index % CascadeTableSize;
-
-	LOOP
+    uint TableBase = Cascade * HashTableSize;
+    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+    uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+	
+    LOOP
 	ALLOW_UAV_CONDITION
 
-	for (uint i = 0; i < CascadeTableSize; i++)
-	{
-		uint64_t StoredKey = RWHashTable[TableBase + Index];
-		if (StoredKey != Key)
-		{
-			if (StoredKey != 0)
-			{
-				Index++;
-				Index = Index >= CascadeTableSize ? 0 : Index;
-				continue;
-			}
+    for (uint i = 0; i < CascadeTableSize; i++)
+    {
+		//Get the key, and fill in invalid if gotten.
+        uint64_t EntryKey;
+        InterlockedCompareExchange(TableEntryKeys[TableBase + Index], kInvalidKey, Key, EntryKey);
+	    if (EntryKey == Key)
+        {
+			//Already inserted
+            OutIndex = 0;
+            return false;
+        }else if (EntryKey == kInvalidKey)
+        {
+            uint FreeListIndex;
+            InterlockedAdd(TableFreeListIndex[Cascade], 1, FreeListIndex);
+            uint DataIndex = TableFreeList[FreeListIndex];
+        	TableEntryIndex[TableBase + Index] = DataIndex;
+            TableKeys[DataIndex] = Key;
+            OutIndex = DataIndex;
+            return true;
+        }
+        
+		//Probe further, (could also use a different ratio for this)
+        Index = (Index + 1) % CascadeTableSize;
+    }
 
-			uint64_t PrevKey;
-			InterlockedCompareExchange(RWHashTable[TableBase + Index], 0, Key, PrevKey);
-
-			if (PrevKey == 0)
-			{
-				return true;
-			}
-			else if (PrevKey != Key)
-			{
-				Index++;
-				Index = Index >= CascadeTableSize ? 0 : Index;
-				continue;
-			}
-		}
-
-		break;
-	}
-
-	return false;
+    //Table full
+    return false;
 }
 
-// Returns true if key is found.
-// Index input is the first hash table bucket to look in.
-// Index output is the hash table bucket this key is stored in if found.
-bool HashTableFind(uint64_t Key, inout uint Index, uint Cascade)
+// Returns true if key is added for the first time.
+bool HashTableAddIndex(uint64_t Key, uint Cascade, uint Index)
 {
-	// Zero is reserved as invalid
-	Key++;
 
 	//Get offset of this cascade's hashtable
-	uint TableBase = Cascade * HashTableSize;
-	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
-	Index = Index % CascadeTableSize;
-
-
-	LOOP
+    uint TableBase = Cascade * HashTableSize;
+    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+    uint KeyIndex = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+	
+    LOOP
 	ALLOW_UAV_CONDITION
-	for (uint i = 0; i < CascadeTableSize; i++)
-	{
-		uint64_t StoredKey = HashTable[TableBase + Index];
-		if (StoredKey != Key)
-		{
-			if (StoredKey != 0)
-			{
-				Index++;
-				Index = Index >= CascadeTableSize ? 0 : Index;
-				continue;
-			}
 
-			return false;
-		}
+    for (uint i = 0; i < CascadeTableSize; i++)
+    {
+		//Get the key, and fill in invalid if gotten.
+        uint64_t EntryKey;
+        InterlockedCompareExchange(TableEntryKeys[TableBase + KeyIndex], kInvalidKey, Key, EntryKey);
+        if (EntryKey == Key)
+        {
+			//Already inserted
+            return false;
+        }
+        else if (EntryKey == kInvalidKey)
+        {
+            TableEntryIndex[TableBase + KeyIndex] = Index;
+            return true;
+        }
+        
+		//Probe further, (could also use a different ratio for this)
+        KeyIndex = (KeyIndex + 1) % CascadeTableSize;
+    }
 
-		break;
-	}
-
-	return true;
+    //Table full
+    return false;
 }
 
+uint HashTableFind(uint64_t Key, uint Cascade)
+{
+	//Get offset of this cascade's hashtable
+    uint TableBase = Cascade * HashTableSize;
+    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+    uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+
+    LOOP
+	ALLOW_UAV_CONDITION
+
+    for (uint i = 0; i < CascadeTableSize; i++)
+    {
+		//Get the key, and fill in invalid if gotten.
+        uint64_t EntryKey = TableEntryKeys[TableBase + Index];
+        if (EntryKey == Key)
+        {
+            return TableEntryIndex[TableBase + Index];
+        }
+        else if (EntryKey == kInvalidKey)
+        {
+            return HashTableSize;
+        }
+        
+		//Probe further, (could also use a different ratio for this)
+        Index = (Index + 1) % CascadeTableSize;
+    }
+
+    return HashTableSize;
+}
 
 //Layout of the key,
 static const uint kKeyBitsX = 19;
@@ -118,7 +151,7 @@ static const uint kKeyShiftValid = (kKeyShiftLevel + kKeyBitsLevel);
 static const uint kKeyBitsTotal = (kKeyShiftValid + kKeyBitsValid);
 
 //Half extend offset to keep cells positive
-static const uint SIGN_OFFSET = (1 << (kKeyBitsX - 1));
+static const uint SIGN_OFFSET = (1u << (kKeyBitsX - 1));
 
 #if kKeyBitsTotal > 64
 #error "Probe key layout exceeds 64 bits"
@@ -217,15 +250,4 @@ uint64_t MakeProbeKey(float3 WorldPos, float3 CameraPos)
 	int3 Cell = int3(floor((WorldPos / VoxelSize)));
 
 	return PackProbeKey(Cell, Level);
-}
-
-
-uint MurmurFinalize32(uint h)
-{
-	h ^= h >> 16;
-	h *= 0x85ebca6bu;
-	h ^= h >> 13;
-	h *= 0xc2b2ae35u;
-	h ^= h >> 16;
-	return h;
 }

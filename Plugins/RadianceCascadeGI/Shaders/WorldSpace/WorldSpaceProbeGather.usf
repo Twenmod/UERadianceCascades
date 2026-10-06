@@ -30,7 +30,6 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
     if (any(float2(DispatchThreadId) >= SceneColorViewport_ViewportSize))
         return;
 
-    float2 ViewportUV = (float2(PixelId) + 0.5f) * SceneColorViewport_ViewportSizeInverse;
     float2 BufferUV = (float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin) * SceneColorViewport_ExtentInverse;
 
     float DeviceZ = LookupDeviceZ(BufferUV);
@@ -57,11 +56,9 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
         Key = PackProbeKey(KeyData.Cell >> Level, LevelRange[Level]);
 
-		//Index to keep things seperate avoiding conflicts
-        uint Index = MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)));
-
-		//Try add to table
-        if (HashTableAdd(Key, Index, 0))
+	    //Try add to table
+        uint Index = HashTableSize;
+        if (HashTableAdd(Key, 0, Index))
         {
 	        //Add to active probes for next passes
             uint Counter;

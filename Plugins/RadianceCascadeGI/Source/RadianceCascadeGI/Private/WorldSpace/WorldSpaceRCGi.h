@@ -16,7 +16,8 @@ public:
 	bool bInitialized = false;
 	std::atomic<bool> bResetTable{ false };
 	TUniquePtr<FAutoConsoleCommand> ResetCommand;
-	TRefCountPtr<FRDGPooledBuffer> HashTableCascade;
+	TRefCountPtr<FRDGPooledBuffer> HashTableKeys;
+	TRefCountPtr<FRDGPooledBuffer> HashTableLastOccupied;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 };
