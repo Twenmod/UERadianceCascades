@@ -16,6 +16,8 @@ RWStructuredBuffer<uint64_t> RWProbes;
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
+RWStructuredBuffer<uint> TableLastOccupiedFrame;
+
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
 //Hash to color debug
@@ -23,8 +25,7 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
-	
-    uint2 PixelId = DispatchThreadId;
+	uint2 PixelId = DispatchThreadId;
 	
 	// Check that we are in scope
     if (any(float2(DispatchThreadId) >= SceneColorViewport_ViewportSize))
@@ -64,6 +65,11 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
             uint Counter;
             InterlockedAdd(ActiveCounter[0], 1, Counter);
             ActiveProbes[Counter] = Index;
+            TableLastOccupiedFrame[Index] = View.StateFrameIndex;
+        }else
+        {
+	        //Still update the usage counter
+            TableLastOccupiedFrame[HashTableFind(Key, 0)] = View.StateFrameIndex;
         }
     }
 }

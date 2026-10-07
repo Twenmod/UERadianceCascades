@@ -7,7 +7,7 @@
 
 //Where in the bigger buffer I cascade's table starts
 RWStructuredBuffer<uint> TableStarts;
-RWStructuredBuffer<uint> TableLastOccupiedIndex;
+RWStructuredBuffer<uint> TableLastOccupiedFrame;
 
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
@@ -38,7 +38,7 @@ uint NumCascades;
 	if (Occupied)
 	{
 		//Remove older probes
-		if (/*TODO: Lifetime tracking*/ true)
+		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - 10)
 		{
 			TableKeys[DataKeyId] = kInvalidKey;
 			Occupied = false;
@@ -50,6 +50,7 @@ uint NumCascades;
             uint ActiveIndex;
             InterlockedAdd(ActiveCounter[Table], 1, ActiveIndex);
             ActiveProbes[ActiveIndex] = DataKeyId;
+
         }
 	}
 

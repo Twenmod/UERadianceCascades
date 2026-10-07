@@ -67,6 +67,7 @@ bool HashTableAdd(uint64_t Key, uint Cascade, out uint OutIndex)
     }
 
     //Table full
+    OutIndex = 0;
     return false;
 }
 
