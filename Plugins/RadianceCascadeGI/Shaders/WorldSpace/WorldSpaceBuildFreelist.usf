@@ -12,11 +12,25 @@ RWStructuredBuffer<uint> TableLastOccupiedFrame;
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
+float HistoryConservation;
+
+RWStructuredBuffer<uint4> TotalRadiance;
+RWStructuredBuffer<uint> ProbeWeights;
+RWStructuredBuffer<uint> BinCounts;
+RWStructuredBuffer<uint> DepositCounts;
+uint BaseDirections;
+
 uint NumCascades;
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
 	uint DataKeyId = DispatchThreadId;
+
+    
+    uint BaseTable = DataKeyId / HashTableSize;
+    uint Local = DataKeyId - BaseTable * HashTableSize;
+    if (BaseTable >= NumCascades || Local >= (HashTableSize >> (2 * BaseTable)))
+        return;
 
 	//Find table
 	uint Table = 0;
@@ -32,25 +46,48 @@ uint NumCascades;
 			break;
 		}
 	}
+
+
 	uint64_t Key = TableKeys[DataKeyId];
 
 	bool Occupied = Key != kInvalidKey;
 	if (Occupied)
 	{
 		//Remove older probes
-		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - 10)
-		{
-			TableKeys[DataKeyId] = kInvalidKey;
-			Occupied = false;
-		}
+		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - 2)
+        {
+            TableKeys[DataKeyId] = kInvalidKey;
+            Occupied = false;
+
+            //Clear probe data
+			if (Table == 0)
+			{
+				BinCounts[DataKeyId] = 0;
+			}
+            DepositCounts[DataKeyId] = 0;
+
+            uint LocalIndex = DataKeyId - Table * HashTableSize;;
+            uint CascadeIndex = Table * HashTableSize * BinsPerProbe(BaseDirections);
+            uint Bins = BinsPerProbe(BaseDirections << Table);
+
+            for (int i = 0; i < Bins; ++i)
+            {
+	            uint SlotIndex = CascadeIndex + LocalIndex * Bins + i;
+
+	            TotalRadiance[SlotIndex] = 0;
+                ProbeWeights[SlotIndex] = 0;
+            }
+        }
 		else
 		{
+			// Surviving probe
 			uint64_t Key = TableKeys[DataKeyId];
-			HashTableAddIndex(Key, Table, DataKeyId);
+            uint LocalIndex = DataKeyId - Table * HashTableSize;
+            HashTableAddIndex(Key, Table, LocalIndex);
             uint ActiveIndex;
             InterlockedAdd(ActiveCounter[Table], 1, ActiveIndex);
-            ActiveProbes[ActiveIndex] = DataKeyId;
-
+            ActiveProbes[Table*HashTableSize + ActiveIndex] = LocalIndex;
+            DepositCounts[DataKeyId] = PackFloatUnsigned(UnpackFloatUnsigned(DepositCounts[DataKeyId]) * HistoryConservation);
         }
 	}
 
@@ -58,6 +95,7 @@ uint NumCascades;
 	{
 		uint FreeListIndex;
 		InterlockedAdd(TableFreeListIndex[Table], 1, FreeListIndex);
-        TableFreeList[FreeListIndex] = DataKeyId;
+        uint LocalIndex = DataKeyId - Table * HashTableSize;
+        TableFreeList[FreeListIndex] = LocalIndex;
     }
 }

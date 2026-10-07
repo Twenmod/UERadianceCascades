@@ -1,5 +1,5 @@
 
-static const float kFloatPackPrecision = 0.00001;
+static const float kFloatPackPrecision = 0.0001;
 static const float kInvFloatPackPrecision = (1 / kFloatPackPrecision);
 
 uint PackFloatUnsigned(float Value)
@@ -11,6 +11,8 @@ float UnpackFloatUnsigned(uint Packed)
 {
     return Packed * kFloatPackPrecision;
 }
+
+static const float kQualityRayCount = 64;
 
 static const float kInvTwoPi = 0.15915494309189535;
 

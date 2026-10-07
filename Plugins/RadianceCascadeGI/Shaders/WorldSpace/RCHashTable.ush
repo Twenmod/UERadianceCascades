@@ -57,7 +57,7 @@ bool HashTableAdd(uint64_t Key, uint Cascade, out uint OutIndex)
             InterlockedAdd(TableFreeListIndex[Cascade], 1, FreeListIndex);
             uint DataIndex = TableFreeList[FreeListIndex];
         	TableEntryIndex[TableBase + Index] = DataIndex;
-            TableKeys[DataIndex] = Key;
+            TableKeys[TableBase + DataIndex] = Key;
             OutIndex = DataIndex;
             return true;
         }
@@ -67,7 +67,7 @@ bool HashTableAdd(uint64_t Key, uint Cascade, out uint OutIndex)
     }
 
     //Table full
-    OutIndex = 0;
+    OutIndex = ~0u;
     return false;
 }
 

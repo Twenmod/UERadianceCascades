@@ -135,6 +135,11 @@ public:
 		meta = (ConsoleVariable = "r.RC.WorldSpace.DisplayProbes",
 			DisplayName = "Display probes"))
 	bool bWorldSpaceProbeDebug = false;
+	UPROPERTY(EditAnywhere, config, Category = "World Space",
+		meta = (ConsoleVariable = "r.RC.WorldSpace.HistoryConservation",
+			DisplayName = "History conservation",
+			Tooltip = "How much to temporally accumulate history, higher values take longer to update but have less flickering", ClampMin = "0.0", ClampMax="1.0", UIMin = "0", UIMax = "0.999", EditCondition = "bWorldSpaceEnabled"))
+	float WsHistoryConservation = 0.9;
 
 	virtual FName GetCategoryName() const override { return FName("Plugins"); }
 

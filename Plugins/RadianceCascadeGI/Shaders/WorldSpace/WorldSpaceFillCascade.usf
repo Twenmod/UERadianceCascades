@@ -9,10 +9,10 @@
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
+RWStructuredBuffer<uint> TableLastOccupiedFrame;
 
 StructuredBuffer<uint4> TotalRadiance;
 StructuredBuffer<uint> Weights;
-
 
 uint Cascade;
 
@@ -41,5 +41,11 @@ uint Cascade;
 		uint Counter;
 		InterlockedAdd(ActiveCounter[Cascade], 1, Counter);
 		ActiveProbes[(Cascade * HashTableSize) + Counter] = Index;
-	}
+        TableLastOccupiedFrame[(Cascade*HashTableSize)+Index] = View.StateFrameIndex;
+
+    }else
+    {
+	    //Still update the usage counter
+        TableLastOccupiedFrame[(Cascade * HashTableSize) + HashTableFind(HighKey, Cascade)] = View.StateFrameIndex;
+    }
 }

@@ -22,8 +22,8 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		}));
 }
 
-static constexpr uint32 kHashTableSize = 1024 * 8;
-static constexpr uint32 DirectionCount = 4;
+static constexpr uint32 kHashTableSize = 1024 * 16;
+static constexpr uint32 kDirectionCount = 4;
 static constexpr uint32 kNumCascades = 4;
 
 void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
@@ -84,7 +84,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		//Allocate probes
 		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32) * 4, kNumCascades * kHashTableSize * (DirectionCount * 2 * DirectionCount));
+			sizeof(uint32) * 4, kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer,
 		                     TEXT("RC Cascade Probes Total Radiance and transmittance"));
 
@@ -92,6 +92,11 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			sizeof(uint32), kNumCascades * kHashTableSize);
 		AllocatePooledBuffer(ProbeDepositCountDesc, ProbeDepositCountBuffer,
 		                     TEXT("RC Cascade Probe Ray Deposit Count"));
+
+		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer,
+			TEXT("RC Cascade Probe Weights"));
 	}
 
 
@@ -122,6 +127,10 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto DepositCountBuffer = GraphBuilder.RegisterExternalBuffer(ProbeDepositCountBuffer);
 		auto DepositCountBufferUAV = GraphBuilder.CreateUAV(DepositCountBuffer);
 		auto DepositCountBufferSRV = GraphBuilder.CreateSRV(DepositCountBuffer);
+
+		auto WeightBuffer = GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer);
+		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
+		auto WeightSRV = GraphBuilder.CreateSRV(WeightBuffer);
 
 		//Create RDG buffers
 
@@ -162,12 +171,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto TableEntryIndexUAV = GraphBuilder.CreateUAV(TableEntryIndex);
 
 
-		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kNumCascades * kHashTableSize * (DirectionCount * 2 * DirectionCount));
-		auto WeightBuffer = GraphBuilder.CreateBuffer(ProbeWeightBufferDesc, TEXT("RC Cascade Probe weights"));
-		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
-		auto WeightSRV = GraphBuilder.CreateSRV(WeightBuffer);
-		AddClearUAVPass(GraphBuilder, WeightUAV, 0);
+
 
 		FRDGBufferDesc ProbeBinCountDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(uint32), kHashTableSize);
@@ -200,6 +204,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		ActiveProbeCountSRV = GraphBuilder.CreateSRV(RDGActiveProbeCount);
 		AddClearUAVPass(GraphBuilder, ActiveProbeCountUAV, 0);
 
+		float HistoryConservation = RC::WorldSpace::CVarHistoryConservation.GetValueOnRenderThread();
 
 		//Build freelist
 		{
@@ -217,6 +222,12 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->NumCascades = kNumCascades;
 			PassParameters->ActiveCounter = ActiveProbeCountUAV;
 			PassParameters->ActiveProbes = ActiveProbeUAV;
+			PassParameters->BaseDirections = kDirectionCount;
+			PassParameters->TotalRadiance = RadianceUAV;
+			PassParameters->ProbeWeights = WeightUAV;
+			PassParameters->DepositCounts = DepositCountBufferUAV;
+			PassParameters->BinCounts = BinCountBufferUAV;
+			PassParameters->HistoryConservation = HistoryConservation;
 
 			TShaderMapRef<FWorldSpaceRCBuildFreeList> Shader(GlobalShaderMap);
 
@@ -294,6 +305,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->BaseVoxelSize = BaseVoxelSize;
 				PassParameters->LevelBaseDist = LevelBaseDist;
 
+
+				PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
+
 				PassParameters->ActiveProbes = ActiveProbeUAV;
 				PassParameters->ActiveCounter = ActiveProbeCountUAV;
 
@@ -303,7 +317,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 				auto IndirectBuffer = FComputeShaderUtils::AddIndirectArgsSetupCsPass1D(
 					GraphBuilder, ViewInfo.GetFeatureLevel(), RDGActiveProbeCount, TEXT("RC Indirect Args"),
-					FWorldSpaceRCFillCascade::GroupCount, i);
+					FWorldSpaceRCFillCascade::GroupCount, i-1);
 				PassParameters->IndirectArgsBuffer = IndirectBuffer;
 
 				FComputeShaderUtils::AddPass(
@@ -331,7 +345,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->BinCounts = BinCountBufferUAV;
 			PassParameters->DepositCounts = DepositCountBufferUAV;
 			PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
-			PassParameters->BaseDirections = DirectionCount;
+			PassParameters->BaseDirections = kDirectionCount;
 			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
@@ -384,7 +398,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 
 		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 4, kNumCascades * kHashTableSize * (DirectionCount * 2 * DirectionCount));
+			sizeof(float) * 4, kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
 		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc,
 		                                                      TEXT("RC Probe Merged radiance+weight"));
 		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
@@ -403,14 +417,16 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->TableEntryIndex = TableEntryIndexUAV;
 				PassParameters->HashTableSize = kHashTableSize;
 				PassParameters->Cascade = i;
+				PassParameters->HistoryConservation = HistoryConservation;
+				PassParameters->NumCascades = kNumCascades;
 				PassParameters->HashTableSize = kHashTableSize;
 				PassParameters->BaseVoxelSize = BaseVoxelSize;
 				PassParameters->LevelBaseDist = LevelBaseDist;
 				PassParameters->ActiveProbes = ActiveProbeSRV;
 				PassParameters->ActiveCounter = ActiveProbeCountSRV;
-				PassParameters->BaseDirections = DirectionCount;
-				PassParameters->ProbeRadiance = RadianceSRV;
-				PassParameters->ProbeWeights = WeightSRV;
+				PassParameters->BaseDirections = kDirectionCount;
+				PassParameters->ProbeRadiance = RadianceUAV;
+				PassParameters->ProbeWeights = WeightUAV;
 				PassParameters->ProbeMergedRadiance = MergedRadianceUAV;
 				PassParameters->ProbeDepositCount = DepositCountBufferSRV;
 
@@ -449,7 +465,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		PassParameters->LevelBaseDist = LevelBaseDist;
 		PassParameters->Intensity = RC::WorldSpace::CVarIntensity.GetValueOnRenderThread();
 		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-		PassParameters->BaseDirections = DirectionCount;
+		PassParameters->BaseDirections = kDirectionCount;
 		PassParameters->ProbeRadiance = GraphBuilder.CreateSRV(RadianceBuffer);
 		PassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
 		PassParameters->Output = Output;

@@ -49,6 +49,11 @@ namespace RC
 			250.0,
 			TEXT("Size in CM of probes at cascade 0\n"),
 			ECVF_RenderThreadSafe);
+		TAutoConsoleVariable<float> CVarHistoryConservation(
+			TEXT("r.RC.WorldSpace.HistoryConservation"),
+			0.9,
+			TEXT("How much history to preserve during temporal accumulation, higher values take longer to update but have less flickering\n"),
+			ECVF_RenderThreadSafe);
 
 	}
 	namespace ScreenSpace

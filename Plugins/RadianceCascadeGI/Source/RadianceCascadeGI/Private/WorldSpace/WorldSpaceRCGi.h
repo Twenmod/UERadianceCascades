@@ -19,5 +19,6 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> HashTableKeys;
 	TRefCountPtr<FRDGPooledBuffer> HashTableLastOccupied;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
+	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 };
