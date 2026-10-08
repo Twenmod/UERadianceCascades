@@ -22,7 +22,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		}));
 }
 
-static constexpr uint32 kHashTableSize = 1024 * 16;
+static constexpr uint32 kHashTableSize = 1024 * 32;
 static constexpr uint32 kDirectionCount = 4;
 static constexpr uint32 kNumCascades = 4;
 
@@ -103,13 +103,13 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 	const FScreenPassTexture SceneColor(Resources.SceneColor, ViewInfo.ViewRect);
 	const FScreenPassTextureViewport SceneColorViewport(SceneColor);
 
-	RDG_EVENT_SCOPE(GraphBuilder, "Screen Space RC");
 	{
+		RDG_EVENT_SCOPE(GraphBuilder, "RC GI");
 		float BaseVoxelSize = RC::WorldSpace::CVarProbeSize.GetValueOnRenderThread();
 		float LevelBaseDist = RC::WorldSpace::CVarProbeHalfDistance.GetValueOnRenderThread();
 
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(),
-		                                                             ViewInfo.GetFeatureLevel());
+			ViewInfo.GetFeatureLevel());
 		auto Output = GraphBuilder.CreateUAV(Resources.SceneColor);
 
 		//Import pooled buffers
@@ -183,7 +183,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize,
-		                                                           FComputeShaderUtils::kGolden2DGroupSize);
+			FComputeShaderUtils::kGolden2DGroupSize);
 		//Register active probes
 		FRDGBufferRef RDGActiveProbes;
 		FRDGBufferUAVRef ActiveProbeUAV;
@@ -191,15 +191,15 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		FRDGBufferRef RDGActiveProbeCount;
 		FRDGBufferUAVRef ActiveProbeCountUAV;
 		FRDGBufferSRVRef ActiveProbeCountSRV;
-		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), kHashTableSize*kNumCascades);
+		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), kHashTableSize * kNumCascades);
 		FRDGBufferDesc ActiveProbesCounterDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), kNumCascades);
-		
+
 		RDGActiveProbes = GraphBuilder.CreateBuffer(ActiveProbesDesc, TEXT("RC Active probes"));
 		ActiveProbeUAV = GraphBuilder.CreateUAV(RDGActiveProbes);
 		ActiveProbeSRV = GraphBuilder.CreateSRV(RDGActiveProbes);
 
 		RDGActiveProbeCount = GraphBuilder.CreateBuffer(ActiveProbesCounterDesc,
-		                                                    TEXT("RC Active probes counter"));
+			TEXT("RC Active probes counter"));
 		ActiveProbeCountUAV = GraphBuilder.CreateUAV(RDGActiveProbeCount);
 		ActiveProbeCountSRV = GraphBuilder.CreateSRV(RDGActiveProbeCount);
 		AddClearUAVPass(GraphBuilder, ActiveProbeCountUAV, 0);
@@ -208,6 +208,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		//Build freelist
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Build Freelist");
 			FWorldSpaceRCBuildFreeList::FParameters* PassParameters = GraphBuilder.AllocParameters<
 				FWorldSpaceRCBuildFreeList::FParameters>();
 
@@ -240,6 +241,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 		//Clear Freelist counter to tablestart
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Clear Freelist");
 			FWorldSpaceRCClearFreeList::FParameters* PassParameters = GraphBuilder.AllocParameters<
 				FWorldSpaceRCClearFreeList::FParameters>();
 
@@ -257,6 +259,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 		//Gather pass, Fill lowest cascade HashTable from the screen
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Gather probes");
 			FWorldSpaceRCGather::FParameters* PassParameters = GraphBuilder.AllocParameters<
 				FWorldSpaceRCGather::FParameters>();
 
@@ -288,6 +291,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 		//Fill further cascades using the filled probes from the lowest one, bottom to top
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Fill cascade probes");
 			for (int i = 1; i < kNumCascades; ++i)
 			{
 				FWorldSpaceRCFillCascade::FParameters* PassParameters = GraphBuilder.AllocParameters<
@@ -317,7 +321,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 				auto IndirectBuffer = FComputeShaderUtils::AddIndirectArgsSetupCsPass1D(
 					GraphBuilder, ViewInfo.GetFeatureLevel(), RDGActiveProbeCount, TEXT("RC Indirect Args"),
-					FWorldSpaceRCFillCascade::GroupCount, i-1);
+					FWorldSpaceRCFillCascade::GroupCount, i - 1);
 				PassParameters->IndirectArgsBuffer = IndirectBuffer;
 
 				FComputeShaderUtils::AddPass(
@@ -330,6 +334,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 		//Trace the scene per pixel and split into probes
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Trace/Bin Rays");
 			TShaderMapRef<FWorldSpaceRCRayBin> RayGenShader(GlobalShaderMap);
 			FWorldSpaceRCRayBin::FParameters* PassParameters = GraphBuilder.AllocParameters<
 				FWorldSpaceRCRayBin::FParameters>();
@@ -374,7 +379,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters,
 				ERDGPassFlags::Compute,
 				[PassParameters, RayGenShader, &ViewInfo, SceneUniformBuffer, NaniteRayTracingUniformBuffer, PassViewSize]
-			(FRDGAsyncTask, FRHICommandList& RHICmdList)
+				(FRDGAsyncTask, FRHICommandList& RHICmdList)
 				{
 					FRHIBatchedShaderParameters& GlobalResources = RHICmdList.GetScratchShaderParameters();
 					SetShaderParameters(GlobalResources, RayGenShader, *PassParameters);
@@ -390,21 +395,29 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 					FRHIShaderBindingTable* SBT = ViewInfo.MaterialRayTracingData.ShaderBindingTable;
 
 					RHICmdList.RayTraceDispatch(Pipeline, RayGenShader.GetRayTracingShader(), SBT,
-					                            GlobalResources, PassViewSize.X, PassViewSize.Y);
+						GlobalResources, PassViewSize.X, PassViewSize.Y);
 				});
 		}
 
 		//Merge probes down
 
 
-		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+		FRDGBufferDesc ProbeFinalRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(float) * 4, kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+		auto FinalRadianceBuffer = GraphBuilder.CreateBuffer(ProbeFinalRadBufferDesc,
+			TEXT("RC Probe Final radiance+weight"));
+		auto FinalRadianceUAV = GraphBuilder.CreateUAV(FinalRadianceBuffer);
+		AddClearUAVPass(GraphBuilder, FinalRadianceUAV, 0);
+
+		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 4, kNumCascades * (kHashTableSize * (kDirectionCount * 2 * kDirectionCount)) / 4);
 		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc,
-		                                                      TEXT("RC Probe Merged radiance+weight"));
+			TEXT("RC Probe Merged radiance+weight"));
 		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
 		AddClearUAVPass(GraphBuilder, MergedRadianceUAV, 0);
 
 		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Merge probes down");
 			for (int i = kNumCascades - 1; i >= 0; --i)
 			{
 				FWorldSpaceRCMerging::FParameters* PassParameters = GraphBuilder.AllocParameters<
@@ -428,18 +441,19 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->ProbeRadiance = RadianceUAV;
 				PassParameters->ProbeWeights = WeightUAV;
 				PassParameters->ProbeMergedRadiance = MergedRadianceUAV;
+				PassParameters->ProbeFinalRadiance = FinalRadianceUAV;
 				PassParameters->ProbeDepositCount = DepositCountBufferSRV;
 
 				TShaderMapRef<FWorldSpaceRCMerging> MergeShader(GlobalShaderMap);
 
 				auto IndirectBuffer = FComputeShaderUtils::AddIndirectArgsSetupCsPass1D(
 					GraphBuilder, ViewInfo.GetFeatureLevel(), RDGActiveProbeCount, TEXT("RC Indirect Args"),
-					FWorldSpaceRCMerging::GroupCount, i);
+					1, i);
 				PassParameters->IndirectArgsBuffer = IndirectBuffer;
 
 				FComputeShaderUtils::AddPass(
 					GraphBuilder,
-					RDG_EVENT_NAME("RC Merge Cascade %d into %d", i+1, i),
+					RDG_EVENT_NAME("RC Merge Cascade %d into %d", i + 1, i),
 					MergeShader,
 					PassParameters,
 					IndirectBuffer, 0);
@@ -448,38 +462,41 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 
 		//Output
-		// Set the shader parameters
-		FWorldSpaceRCApply::FParameters* PassParameters = GraphBuilder.AllocParameters<
-			FWorldSpaceRCApply::FParameters>();
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Apply output");
+			// Set the shader parameters
+			FWorldSpaceRCApply::FParameters* PassParameters = GraphBuilder.AllocParameters<
+				FWorldSpaceRCApply::FParameters>();
 
-		// Input is the SceneColor from PostProcess Material Inputs
-		PassParameters->View = ViewInfo.ViewUniformBuffer;
-		PassParameters->SceneTextures = SceneTextureParams;
-		PassParameters->TableKeys = TableKeysUAV;
-		PassParameters->TableFreeList = TableFreeListUAV;
-		PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
-		PassParameters->TableEntryKeys = TableEntryKeysUAV;
-		PassParameters->TableEntryIndex = TableEntryIndexUAV;
-		PassParameters->HashTableSize = kHashTableSize;
-		PassParameters->BaseVoxelSize = BaseVoxelSize;
-		PassParameters->LevelBaseDist = LevelBaseDist;
-		PassParameters->Intensity = RC::WorldSpace::CVarIntensity.GetValueOnRenderThread();
-		PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
-		PassParameters->BaseDirections = kDirectionCount;
-		PassParameters->ProbeRadiance = GraphBuilder.CreateSRV(RadianceBuffer);
-		PassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
-		PassParameters->Output = Output;
-		PassParameters->DisplayCascade = RC::WorldSpace::CVarDisplayCascade.GetValueOnRenderThread();
-		PassParameters->ProbeMergedRadiance = GraphBuilder.CreateSRV(MergedRadianceBuffer);
-		PassParameters->ProbeDepositCount = DepositCountBufferSRV;
-		PassParameters->DebugOutputCells = RC::WorldSpace::CVarDisplayProbes.GetValueOnRenderThread();
-		TShaderMapRef<FWorldSpaceRCApply> ApplyCS(GlobalShaderMap);
+			// Input is the SceneColor from PostProcess Material Inputs
+			PassParameters->View = ViewInfo.ViewUniformBuffer;
+			PassParameters->SceneTextures = SceneTextureParams;
+			PassParameters->TableKeys = TableKeysUAV;
+			PassParameters->TableFreeList = TableFreeListUAV;
+			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
+			PassParameters->TableEntryKeys = TableEntryKeysUAV;
+			PassParameters->TableEntryIndex = TableEntryIndexUAV;
+			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->BaseVoxelSize = BaseVoxelSize;
+			PassParameters->LevelBaseDist = LevelBaseDist;
+			PassParameters->Intensity = RC::WorldSpace::CVarIntensity.GetValueOnRenderThread();
+			PassParameters->SceneColorViewport = GetScreenPassTextureViewportParameters(SceneColorViewport);
+			PassParameters->BaseDirections = kDirectionCount;
+			PassParameters->ProbeRadiance = GraphBuilder.CreateSRV(RadianceBuffer);
+			PassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
+			PassParameters->Output = Output;
+			PassParameters->DisplayCascade = RC::WorldSpace::CVarDisplayCascade.GetValueOnRenderThread();
+			PassParameters->ProbeFinalRadiance = GraphBuilder.CreateSRV(FinalRadianceBuffer);
+			PassParameters->ProbeDepositCount = DepositCountBufferSRV;
+			PassParameters->DebugOutputCells = RC::WorldSpace::CVarDisplayProbes.GetValueOnRenderThread();
+			TShaderMapRef<FWorldSpaceRCApply> ApplyCS(GlobalShaderMap);
 
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("RC Applying Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
-			ApplyCS,
-			PassParameters,
-			GroupCount);
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("RC Applying Output pass %dx%d", PassViewSize.X, PassViewSize.Y),
+				ApplyCS,
+				PassParameters,
+				GroupCount);
+		}
 	}
 }

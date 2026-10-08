@@ -12,7 +12,7 @@ RWTexture2D<float4> Output;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
-StructuredBuffer<float4> ProbeMergedRadiance;
+StructuredBuffer<float4> ProbeFinalRadiance;
 StructuredBuffer<uint> ProbeDepositCount;
 
 uint DisplayCascade;
@@ -132,7 +132,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 					}
 					uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
 					uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
-					float4 MergedRad = ProbeMergedRadiance[BuffIndex];
+					float4 MergedRad = ProbeFinalRadiance[BuffIndex];
 					if (MergedRad.w > 0.0)
 					{
                         float Weight = NdotL * UnpackFloatUnsigned(DepositCount);

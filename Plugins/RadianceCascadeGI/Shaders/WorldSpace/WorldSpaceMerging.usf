@@ -20,11 +20,16 @@ RWStructuredBuffer<uint> ProbeWeights;
 StructuredBuffer<uint> ProbeDepositCount;
 
 RWStructuredBuffer<float4> ProbeMergedRadiance;
+RWStructuredBuffer<float4> ProbeFinalRadiance;
+groupshared uint ParentIndices[8];
+groupshared float ParentWeights[8];
 
-[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void MainCS(uint2 GroupId : SV_GroupID,
+            uint2 GroupThreadId : SV_GroupThreadID)
 {
-	uint ProbeId = DispatchThreadId;
-
+	uint ProbeId = GroupId.x;
+	uint Lane = GroupThreadId.y;
 	// Check that we are in scope
 	if (ProbeId >= ActiveCounter[Cascade])
 	{
@@ -32,7 +37,7 @@ RWStructuredBuffer<float4> ProbeMergedRadiance;
 	}
 
 	//Blend higher cascade
-	uint ProbeIndex = ActiveProbes[Cascade*HashTableSize+ProbeId];
+	uint ProbeIndex = ActiveProbes[Cascade * HashTableSize + ProbeId];
 	uint64_t ProbeKey = TableKeys[(Cascade) * HashTableSize + ProbeIndex];
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
@@ -49,70 +54,119 @@ RWStructuredBuffer<float4> ProbeMergedRadiance;
 	uint ParentCascadeIndex = (Cascade + 1) * HashTableSize * BinsPerProbe(BaseDirections);
 	uint ParentDirCount = BaseDirections << (Cascade + 1);
 
-
-	//Paper's thing does this per y thread instead then merges with wave semantics but this is simpler for now.
-	for (int i = 0; i < BinsPerProbe(DirectionCount); ++i)
+	if (Lane < 8)
 	{
+		//Find parent cells
+		uint c = Lane;
+		int3 Corner = ParentCell + int3(c & 1, (c >> 1) & 1, c >> 2);
+
+		uint WeightBits = c ^ J;
+		uint WeightId = countbits(WeightBits);
+		float InterpWeight = CornerWeight[WeightId];
+
+		uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
+
+		uint ParentIndex = HashTableFind(CascadeKey, Cascade + 1);
+		if (ParentIndex < HashTableSize)
+		{
+			//Amount of rays this probe got, so lower ones are low quality
+			uint DepositCount = ProbeDepositCount[((Cascade + 1) * HashTableSize) + ParentIndex];
+			if (DepositCount <= 0)
+			{
+				ParentIndices[c] = HashTableSize;
+				ParentWeights[c] = 0;
+			}
+			else
+			{
+				float DepositQuality = saturate(UnpackFloatUnsigned(DepositCount) / kQualityRayCount);
+				float QualityInterpWeight = InterpWeight * DepositQuality;
+				ParentIndices[c] = ParentIndex;
+				ParentWeights[c] = QualityInterpWeight;
+			}
+		}
+		else
+		{
+			ParentIndices[c] = HashTableSize;
+			ParentWeights[c] = 0;
+		}
+	}
+
+	//Wait untill all probes are found/loaded
+	GroupMemoryBarrierWithGroupSync();
+
+
+	uint Bins = BinsPerProbe(DirectionCount);
+	//Go over all the bins, each groupthread handles 1/32 bins, merging via lanes
+	for
+	(
+		int i = 0;
+		i < Bins;
+		i
+		+=
+		32
+	)
+	{
+		uint Bin = i + Lane;
+
 		//Load own Radiance
-		uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + i;
+		uint SlotIndex = CascadeIndex + ProbeIndex * Bins + Bin;
 
 		float Weight = UnpackFloatUnsigned(ProbeWeights[SlotIndex]);
 		uint4 PackedRadiance = ProbeRadiance[SlotIndex];
-        float4 UnpackedRadiance = float4(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y),
-		                                UnpackFloatUnsigned(PackedRadiance.z), UnpackFloatUnsigned(PackedRadiance.w));
+		float4 UnpackedRadiance = float4(UnpackFloatUnsigned(PackedRadiance.x), UnpackFloatUnsigned(PackedRadiance.y),
+		                                 UnpackFloatUnsigned(PackedRadiance.z), UnpackFloatUnsigned(PackedRadiance.w));
 		float3 CurrentRadiance = UnpackedRadiance.xyz / Weight;
 		float TransmittedWeight = UnpackedRadiance.w / Weight;
 
-		float3 ParentRadianceSum = 0;
+		float4 ParentRadianceSum = 0;
 		float ParentRadianceWeight = 0;
-        if (Cascade < NumCascades - 1)
-        {
-            for (uint c = 0; c < 8; ++c)
-            {
-                int3 Corner = ParentCell + int3(c & 1, (c >> 1) & 1, c >> 2);
+		if (Cascade < NumCascades - 1)
+		{
+			for (uint c = 0; c < 8; ++c)
+			{
+				uint ParentIndex = ParentIndices[c];
+				if (ParentIndex < HashTableSize)
+				{
+					float ParentWeight = ParentWeights[c];
 
-                uint WeightBits = c ^ J;
-                uint WeightId = countbits(WeightBits);
-                float InterpWeight = CornerWeight[WeightId];
+                    uint ParentSlotIndex = ParentCascadeIndex / 4 + ParentIndex * Bins + Bin;
+					float4 DirRadiance = ProbeMergedRadiance[ParentSlotIndex];
+					if (DirRadiance.w > 0.0)
+					{
+						ParentRadianceSum += DirRadiance * ParentWeight;
+						ParentRadianceWeight += ParentWeight;
+					}
+				}
+			}
+		}
+        float4 ParentRadiance = ParentRadianceWeight > 0.0001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
+        float3 ParentRadApplied = ParentRadiance.w > 0.0001 ? ParentRadiance.xyz / ParentRadiance.w : 0;
+        float4 Radiance = (Weight > 0.0001)
+			                  ? 
+			                  float4(CurrentRadiance + ParentRadApplied *
+			                           TransmittedWeight, 1) : 0;
+		//Output final buffer for final cascade for apply pass
+		if (Cascade == 0 || true)
+		{
+			ProbeFinalRadiance[SlotIndex] = Radiance;
+		}
+		//Merge the 4 direction bins into 1 across lanes
+		uint L = WaveGetLaneIndex();
+		float4 LaneMergedRadiance = Radiance;
+		LaneMergedRadiance += WaveReadLaneAt(LaneMergedRadiance, L ^ 1);
+		LaneMergedRadiance += WaveReadLaneAt(LaneMergedRadiance, L ^ 2);
+		if (Lane % 4 == 0)
+		{
+			ProbeMergedRadiance[(CascadeIndex + ProbeIndex * Bins) / 4 + Bin / 4] = LaneMergedRadiance.w > 0.0
+				? float4(LaneMergedRadiance.xyz / LaneMergedRadiance.w, 1.0)
+				: 0;
+		}
 
 
-                uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
-
-                uint ParentIndex = HashTableFind(CascadeKey, Cascade + 1);
-                if (ParentIndex < HashTableSize)
-                {
-				//Amount of rays this probe got, so lower ones are low quality
-                    uint DepositCount = ProbeDepositCount[((Cascade + 1) * HashTableSize) + ParentIndex];
-                    if (DepositCount <= 0)
-                    {
-                        continue;
-                    }
-
-				//Go over the 4 direction bins in the parent (since the parent has 4 times as much dirs)
-                    float4 DirRadiance = 0;
-                    for (uint d = 0; d < 4; ++d)
-                    {
-                        uint ParentSlotIndex = ParentCascadeIndex + ParentIndex * BinsPerProbe(ParentDirCount) + i * 4 + d;
-                        DirRadiance += ProbeMergedRadiance[ParentSlotIndex];
-                    }
-                    if (DirRadiance.w > 0.0)
-                    {
-                        float DepositQuality = saturate(UnpackFloatUnsigned(DepositCount)/kQualityRayCount);
-                        float QualityInterpWeight = InterpWeight * DepositQuality;
-                        ParentRadianceSum += (DirRadiance.xyz / DirRadiance.w) * QualityInterpWeight;
-                        ParentRadianceWeight += QualityInterpWeight;
-                    }
-                }
-            }
-        }
-		float3 ParentRadiance = ParentRadianceWeight > 0.00001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
-		ProbeMergedRadiance[SlotIndex] = (Weight <= 0.0001)
-			                                 ? 0
-			                                 : float4(CurrentRadiance + ParentRadiance * TransmittedWeight, 1);
-	
 		//Reinsert own radiance with temporal decay
-        ProbeWeights[SlotIndex] = PackFloatUnsigned(Weight * HistoryConservation);
-	UnpackedRadiance *= HistoryConservation;
-	ProbeRadiance[SlotIndex] = uint4(PackFloatUnsigned(UnpackedRadiance.x), PackFloatUnsigned(UnpackedRadiance.y), PackFloatUnsigned(UnpackedRadiance.z), PackFloatUnsigned(UnpackedRadiance.w));
+		ProbeWeights[SlotIndex] = PackFloatUnsigned(Weight * HistoryConservation);
+		UnpackedRadiance *= HistoryConservation;
+		ProbeRadiance[SlotIndex] = uint4(PackFloatUnsigned(UnpackedRadiance.x), PackFloatUnsigned(UnpackedRadiance.y),
+		                                 PackFloatUnsigned(UnpackedRadiance.z), PackFloatUnsigned(UnpackedRadiance.w));
 	}
 }

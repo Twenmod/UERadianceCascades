@@ -174,6 +174,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, ProbeMergedRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, ProbeFinalRadiance)
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -185,11 +186,11 @@ public:
 	// Define environment variables used by compute shader
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		OutEnvironment.SetDefine(TEXT("THREADS_X"), GroupCount);
-		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 1);
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 1);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), GroupCount);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
-	static constexpr uint32 GroupCount = 128;
+	static constexpr uint32 GroupCount = 32; // Has to be 32 for the wave
 };
 
 
@@ -214,7 +215,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeMergedRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeFinalRadiance)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(float, Intensity)
@@ -313,5 +314,3 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
 };
-
-
