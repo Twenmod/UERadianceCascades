@@ -12,8 +12,12 @@ RWTexture2D<float4> Output;
 
 StructuredBuffer<uint4> ProbeRadiance;
 StructuredBuffer<uint> ProbeWeights;
-StructuredBuffer<float4> ProbeFinalRadiance;
 StructuredBuffer<uint> ProbeDepositCount;
+
+
+Texture2D<float4> FinalIrradiance;
+StructuredBuffer<uint> ProbeToFinalId;
+uint FinalAtlasExtend;
 
 uint DisplayCascade;
 
@@ -74,7 +78,6 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	{
 		return;
 	}
-	float2 ScreenPos = ViewportUVToScreenPos(ViewportUV);
 	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(
 		float4(float2(PixelId) + 0.5f + SceneColorViewport_ViewportMin, DeviceZ, 1.0f));
 
@@ -88,8 +91,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	float2 LodWeights;
 	ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
 
-	float3 RadSum = 0;
-	float WeightSum = 0;
+	float4 RadSum = 0;
 
 	for (uint Level = 0; Level < 2; Level++)
 	{
@@ -109,58 +111,41 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 			float InterpWeight = T.x * T.y * T.z;
 
 			uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
-            uint Index = HashTableFind(CascadeKey, DisplayCascade);
+			uint Index = HashTableFind(CascadeKey, DisplayCascade);
 			if (Index < HashTableSize)
 			{
-                uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
-                if (DepositCount <= 0)
-                {
-                    continue;
-                }
-				uint DirectionCount = BaseDirections << DisplayCascade;
-
-				float3 TotalRadiance = 0;
-				float TotalWeight = 0;
-
-				for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
+				uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
+				if (DepositCount <= 0)
 				{
-					float3 Dir = LinearToDir(i, DirectionCount);
-					float NdotL = max(0.0, dot(Dir, Normal));
-					if (NdotL <= 0)
-					{
-						continue;
-					}
-					uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
-					uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
-					float4 MergedRad = ProbeFinalRadiance[BuffIndex];
-					if (MergedRad.w > 0.0)
-					{
-                        float Weight = NdotL * UnpackFloatUnsigned(DepositCount);
-                        TotalRadiance += MergedRad.xyz * Weight;
-						TotalWeight += Weight;
-					}
+					continue;
 				}
-				//Renormalize over hemisphere
-				if (TotalWeight > 0.0)
-				{
-					RadSum += TotalWeight >= 0 ? (TotalRadiance / TotalWeight) * InterpWeight * LodWeights[Level] : 0;
-					WeightSum += InterpWeight * (LodWeights[Level]);
-				}
+
+				float DepositWeight = UnpackFloatUnsigned(DepositCount);
+
+				uint Tile = ProbeToFinalId[Index];
+				float2 Oct = UnitVectorToOctahedron(Normal) * 0.5 + 0.5;
+				float2 Pixel = float2(Tile % FinalAtlasExtend, Tile / FinalAtlasExtend) * 8.0 + 1.0 + Oct * 6.0;
+				float2 AtlasSizePixels = (float2)FinalAtlasExtend * 8.0;
+				float4 TotalRadiance = FinalIrradiance.SampleLevel(GlobalBilinearClampedSampler,
+				                                                   Pixel / AtlasSizePixels, 0);
+
+				float TotalWeight = InterpWeight * LodWeights[Level] * DepositWeight;
+				RadSum += TotalRadiance * TotalWeight;
 			}
 		}
 	}
 
-    Output[PixelId] += float4((RadSum / max(WeightSum,0.0001)) * GBufferData.BaseColor, 1) * Intensity;
+	Output[PixelId] += float4((RadSum.xyz / RadSum.w) * GBufferData.BaseColor, 1) *
+		Intensity;
 
 
 	//Debug output to see cells
 	if (DebugOutputCells == 1)
 	{
 		uint64_t DebugKey = MakeProbeKey(WorldPos, CameraPos);
-        ProbeKeyInfo data = UnpackProbeKey( DebugKey);
-        DebugKey = PackProbeKey(data.Cell >> DisplayCascade, data.Level);
-        uint DebugIndex = HashTableFind(DebugKey, DisplayCascade);
-        Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
-
+		ProbeKeyInfo data = UnpackProbeKey(DebugKey);
+		DebugKey = PackProbeKey(data.Cell >> DisplayCascade, data.Level);
+		uint DebugIndex = HashTableFind(DebugKey, DisplayCascade);
+		Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
 	}
 }

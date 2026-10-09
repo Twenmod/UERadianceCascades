@@ -2,6 +2,8 @@
 #include "/Engine/Private/DeferredShadingCommon.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
+#include "/Engine/Private/OctahedralCommon.ush"
+
 #include "RCHashTable.ush"
 #include "RCCommon.ush"
 
@@ -20,9 +22,17 @@ RWStructuredBuffer<uint> ProbeWeights;
 StructuredBuffer<uint> ProbeDepositCount;
 
 RWStructuredBuffer<float4> ProbeMergedRadiance;
-RWStructuredBuffer<float4> ProbeFinalRadiance;
+
+RWTexture2D<float4> FinalIrradiance;
+RWStructuredBuffer<uint> ProbeToFinalId; // Converts probe id to finalirradiance tile.
+uint FinalAtlasExtend;
+
+groupshared float4 FinalRadiance[32];
+groupshared float4 GroupFinalIrradiance[36];
 groupshared uint ParentIndices[8];
 groupshared float ParentWeights[8];
+
+
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
 void MainCS(uint2 GroupId : SV_GroupID,
@@ -146,10 +156,58 @@ void MainCS(uint2 GroupId : SV_GroupID,
 			                  float4(CurrentRadiance + ParentRadApplied *
 			                           TransmittedWeight, 1) : 0;
 		//Output final buffer for final cascade for apply pass
-		if (Cascade == 0 || true)
+		if (Cascade == 0)
 		{
-			ProbeFinalRadiance[SlotIndex] = Radiance;
-		}
+			//Merge all the direction bins into an octehedral map, avoids apply sampling all bins
+			FinalRadiance[Lane] = Radiance;
+            GroupMemoryBarrierWithGroupSync();
+
+            for (uint t = Lane; t < (6*6); t += 32)
+            {
+                float2 Oct = ((float2(t % 6, t / 6) + 0.5) / 6.0) * 2.0 - 1.0;
+                float3 Normal = OctahedronToUnitVector(Oct);
+
+                float4 Acc = 0;
+                for (uint SampleBin = 0; SampleBin < 32; ++SampleBin)
+                {
+                    float Cos = max(0, dot(LinearToDir(SampleBin, BaseDirections), Normal));
+                    float4 Rad = FinalRadiance[SampleBin];
+                    if (Rad.w > 0)
+                        Acc += float4(Rad.xyz * Cos, Cos);
+                }
+                GroupFinalIrradiance[t] = Acc;
+            }
+            GroupMemoryBarrierWithGroupSync();
+
+            //Active(dense) list index since output is dense.
+            uint TextureTile = ProbeId;
+            //1 writes map
+			if (Lane == 0)
+            {
+	            ProbeToFinalId[ProbeIndex] = TextureTile;
+            }
+
+            uint2 Origin = uint2(TextureTile % FinalAtlasExtend, TextureTile / FinalAtlasExtend) * 8; // 8 is the 6x6 map plus a border for interp
+            for (uint p = Lane; p < (8*8); p += 32)
+            {
+                int2 Pixel = int2(p & 7, p >> 3);
+                //without border
+                int2 InsidePixel = Pixel - 1;
+
+                bool BorderX = InsidePixel.x < 0 || InsidePixel.x > 5;
+                bool BorderY = InsidePixel.y < 0 || InsidePixel.y > 5;
+                int2 Clamped = clamp(InsidePixel, 0, 5);
+				//Flip/Wrap at border
+                if (BorderX && BorderY)
+                    Clamped = 5 - Clamped;
+                else if (BorderX)
+                    Clamped.y = 5 - Clamped.y;
+                else if (BorderY)
+                    Clamped.x = 5 - Clamped.x;
+                FinalIrradiance[Origin + Pixel] = GroupFinalIrradiance[Clamped.y * 6 + Clamped.x];
+            }
+        }
+
 		//Merge the 4 direction bins into 1 across lanes
 		uint L = WaveGetLaneIndex();
 		float4 LaneMergedRadiance = Radiance;

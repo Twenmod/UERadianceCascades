@@ -23,6 +23,9 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 }
 
 static constexpr uint32 kHashTableSize = 1024 * 32;
+static constexpr uint32 kIrrAtlasExtend = 182; // should be sqrt(hashtablesize/max visible probes)
+
+//Cant change
 static constexpr uint32 kDirectionCount = 4;
 static constexpr uint32 kNumCascades = 4;
 
@@ -402,12 +405,17 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		//Merge probes down
 
 
-		FRDGBufferDesc ProbeFinalRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 4, kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
-		auto FinalRadianceBuffer = GraphBuilder.CreateBuffer(ProbeFinalRadBufferDesc,
-			TEXT("RC Probe Final radiance+weight"));
-		auto FinalRadianceUAV = GraphBuilder.CreateUAV(FinalRadianceBuffer);
-		AddClearUAVPass(GraphBuilder, FinalRadianceUAV, 0);
+		//Map that maps probe to irradiance atlas
+		FRDGBufferDesc ProbeFinalMapDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), kHashTableSize);
+		auto ProbeToFinalId = GraphBuilder.CreateBuffer(ProbeFinalMapDesc,
+			TEXT("RC Probe ID to Irradiance ID"));
+		auto ProbeToFinalUAV = GraphBuilder.CreateUAV(ProbeToFinalId);
+
+		//Final irradiance atlas
+		FRDGTextureDesc ProbeFinalIrradianceDesc = FRDGTextureDesc::Create2D(FIntPoint(kIrrAtlasExtend*8), PF_FloatRGBA, FClearValueBinding::Black, ETextureCreateFlags::UAV | ETextureCreateFlags::ShaderResource);
+		auto ProbeFinalIrradiance = GraphBuilder.CreateTexture(ProbeFinalIrradianceDesc, TEXT("RC Probe Irradiance atlas"));
+		auto ProbeFinalIrradianceUAV = GraphBuilder.CreateUAV( ProbeFinalIrradiance);
 
 		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(float) * 4, kNumCascades * (kHashTableSize * (kDirectionCount * 2 * kDirectionCount)) / 4);
@@ -441,7 +449,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->ProbeRadiance = RadianceUAV;
 				PassParameters->ProbeWeights = WeightUAV;
 				PassParameters->ProbeMergedRadiance = MergedRadianceUAV;
-				PassParameters->ProbeFinalRadiance = FinalRadianceUAV;
+				PassParameters->FinalIrradiance = ProbeFinalIrradianceUAV;
+				PassParameters->ProbeToFinalId = ProbeToFinalUAV;
+				PassParameters->FinalAtlasExtend = kIrrAtlasExtend;
 				PassParameters->ProbeDepositCount = DepositCountBufferSRV;
 
 				TShaderMapRef<FWorldSpaceRCMerging> MergeShader(GlobalShaderMap);
@@ -486,7 +496,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->ProbeWeights = GraphBuilder.CreateSRV(WeightBuffer);
 			PassParameters->Output = Output;
 			PassParameters->DisplayCascade = RC::WorldSpace::CVarDisplayCascade.GetValueOnRenderThread();
-			PassParameters->ProbeFinalRadiance = GraphBuilder.CreateSRV(FinalRadianceBuffer);
+			PassParameters->ProbeToFinalId = GraphBuilder.CreateSRV(ProbeToFinalId);
+			PassParameters->FinalIrradiance = GraphBuilder.CreateSRV(ProbeFinalIrradiance);
+			PassParameters->FinalAtlasExtend = kIrrAtlasExtend;
 			PassParameters->ProbeDepositCount = DepositCountBufferSRV;
 			PassParameters->DebugOutputCells = RC::WorldSpace::CVarDisplayProbes.GetValueOnRenderThread();
 			TShaderMapRef<FWorldSpaceRCApply> ApplyCS(GlobalShaderMap);

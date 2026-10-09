@@ -12,7 +12,7 @@ float UnpackFloatUnsigned(uint Packed)
     return Packed * kFloatPackPrecision;
 }
 
-static const float kQualityRayCount = 64;
+static const float kQualityRayCount = 256;
 
 static const float kInvTwoPi = 0.15915494309189535;
 

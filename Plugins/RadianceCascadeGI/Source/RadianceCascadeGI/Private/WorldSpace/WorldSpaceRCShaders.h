@@ -42,8 +42,8 @@ public:
 	// Define environment variables used by compute shader
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		OutEnvironment.SetDefine(TEXT("THREADS_X"), 8);
-		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 8);
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 16);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 16);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
 };
@@ -170,11 +170,14 @@ public:
 		SHADER_PARAMETER(uint32, Cascade)
 		SHADER_PARAMETER(uint32, NumCascades)
 		SHADER_PARAMETER(uint32, BaseDirections)
+		SHADER_PARAMETER(uint32, FinalAtlasExtend)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, ProbeMergedRadiance)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float4>, ProbeFinalRadiance)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, FinalIrradiance)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ProbeToFinalId)
+
 	END_SHADER_PARAMETER_STRUCT()
 
 	// Basic shader initialization
@@ -215,13 +218,16 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint4>, ProbeRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeWeights)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeDepositCount)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float4>, ProbeFinalRadiance)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, FinalIrradiance)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<uint>, ProbeToFinalId)
 		SHADER_PARAMETER(float, BaseVoxelSize)
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(float, Intensity)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, DisplayCascade)
 		SHADER_PARAMETER(uint32, DebugOutputCells)
+		SHADER_PARAMETER(uint32, FinalAtlasExtend)
+
 
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -234,8 +240,8 @@ public:
 	// Define environment variables used by compute shader
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		OutEnvironment.SetDefine(TEXT("THREADS_X"), 8);
-		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 8);
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 16);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 16);
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
 };

@@ -1,0 +1,96 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+#include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/BlueNoise.ush"
+
+#include "RCHashTable.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "RCCommon.ush"
+
+StructuredBuffer<uint4> ProbeRadiance;
+StructuredBuffer<uint> ProbeWeights;
+StructuredBuffer<float4> ProbeFinalRadiance;
+StructuredBuffer<uint> ProbeDepositCount;
+
+StructuredBuffer<uint> ActiveProbes;
+StructuredBuffer<uint> ActiveCounter;
+
+uint BaseDirections;
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]
+void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint ProbeId = DispatchThreadId.x;
+
+	// Check that we are in scope
+    if (ProbeId >= ActiveCounter[0])
+    {
+        return;
+    }
+
+	//Blend higher cascade
+    uint ProbeIndex = ActiveProbes[Cascade * HashTableSize + ProbeId];
+
+    float3 RadSum = 0;
+    float WeightSum = 0;
+
+    for (uint Level = 0; Level < 2; Level++)
+    {
+        if (Level == 1 && LodWeights.y == 0)
+        {
+            break;
+        }
+        float LodVoxel = LevelVoxelSize(LevelRange[Level]) * float(1u << DisplayCascade);
+        float3 FloatCell = WorldPos / LodVoxel - 0.5;
+        int3 Cell = int3(floor(FloatCell));
+        float3 Frac = FloatCell - float3(Cell);
+
+        for (uint c = 0; c < 8; ++c)
+        {
+            int3 Corner = (Cell) + int3(c & 1, (c >> 1) & 1, c >> 2);
+            float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
+            float InterpWeight = T.x * T.y * T.z;
+
+            uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
+            uint Index = HashTableFind(CascadeKey, DisplayCascade);
+            if (Index < HashTableSize)
+            {
+                uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
+                if (DepositCount <= 0)
+                {
+                    continue;
+                }
+                uint DirectionCount = BaseDirections << DisplayCascade;
+
+                float3 TotalRadiance = 0;
+                float TotalWeight = 0;
+
+                for (uint i = 0; i < BinsPerProbe(DirectionCount); ++i)
+                {
+                    float3 Dir = LinearToDir(i, DirectionCount);
+                    float NdotL = max(0.0, dot(Dir, Normal));
+                    if (NdotL <= 0)
+                    {
+                        continue;
+                    }
+                    uint CascadeIndex = DisplayCascade * HashTableSize * BinsPerProbe(BaseDirections);
+                    uint BuffIndex = CascadeIndex + Index * BinsPerProbe(DirectionCount) + i;
+                    float4 MergedRad = ProbeFinalRadiance[BuffIndex];
+                    if (MergedRad.w > 0.0)
+                    {
+                        float Weight = NdotL * UnpackFloatUnsigned(DepositCount);
+                        TotalRadiance += MergedRad.xyz * Weight;
+                        TotalWeight += Weight;
+                    }
+                }
+				//Renormalize over hemisphere
+                if (TotalWeight > 0.0)
+                {
+                    RadSum += TotalWeight >= 0 ? (TotalRadiance / TotalWeight) * InterpWeight * LodWeights[Level] : 0;
+                    WeightSum += InterpWeight * (LodWeights[Level]);
+                }
+            }
+        }
+    }
+    Output[PixelId] += float4((RadSum / max(WeightSum, 0.0001)) * GBufferData.BaseColor, 1) * Intensity;
+}
