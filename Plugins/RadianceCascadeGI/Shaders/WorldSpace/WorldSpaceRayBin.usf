@@ -23,6 +23,10 @@ float NormalOffset;
 static const uint kNumCascades = 4;
 static const float kC0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 4 base directions
 
+float2 R2Int(uint i)
+{
+	return float2(i * 3242174889u, i * 2447445414u) * (1.0 / 4294967296.0);
+}
 
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
 {
@@ -30,10 +34,6 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
 
 	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
-	if (GBuffer.ShadingModelID == SHADINGMODELID_UNLIT)
-	{
-		return;
-	}
 
 	float DeviceZ = SceneDepth.Load(int3(PixelCoord, 0)).r;
 	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
@@ -69,7 +69,12 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float3 Radiance = 0;
 
 	//Add per probe hash to randomize it a bit so not all probes go into a similar direction on low samples
-	float2 E = R2Sequence(BinIndex + 1);
+	uint ProbeHash = MurmurFinalize32(uint(TopKey) ^ MurmurFinalize32(uint(TopKey >> 32)));
+	uint H = MurmurFinalize32(View.StateFrameIndex * 0x9E3779B9u);
+	float2 FrameJitter = float2(H & 0xFFFFu, H >> 16) / 65536.0;
+	//Get direction from R2 sequence to accumulate with the binned rays faster than random rays.
+	float2 E = frac(R2Int(ProbeHash + BinIndex) + FrameJitter);
+
 	float3 Dir = UniformSampleSphere(E).xyz;
 	Dir *= sign(dot(Dir, N));
 	Ray.Direction = Dir.

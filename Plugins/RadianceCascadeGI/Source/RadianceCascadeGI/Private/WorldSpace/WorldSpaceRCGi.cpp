@@ -22,8 +22,8 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		}));
 }
 
-static constexpr uint32 kHashTableSize = 1024 * 32;
-static constexpr uint32 kIrrAtlasExtend = 182; // should be sqrt(hashtablesize/max visible probes)
+static constexpr uint32 kHashTableSize = 1024 * 128;
+static constexpr uint32 kIrrAtlasExtend = 363; // should be sqrt(hashtablesize/max visible probes)
 
 //Cant change
 static constexpr uint32 kDirectionCount = 4;
