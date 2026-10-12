@@ -14,6 +14,7 @@ StructuredBuffer<uint> ActiveCounter;
 uint Cascade;
 uint BaseDirections;
 uint NumCascades;
+uint DisplayCascade;
 
 float HistoryConservation;
 
@@ -74,6 +75,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 		uint WeightBits = c ^ J;
 		uint WeightId = countbits(WeightBits);
 		float InterpWeight = CornerWeight[WeightId];
+
 
 		uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
 
@@ -158,7 +160,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 			                  float4(CurrentRadiance + ParentRadApplied *
 			                           TransmittedWeight, 1) : 0;
 		//Output final buffer for final cascade for apply pass
-		if (Cascade == 0)
+		if (Cascade == DisplayCascade)
 		{
 			//Merge all the direction bins into an octehedral map, avoids apply sampling all bins
 			FinalRadiance[Lane] = Radiance;

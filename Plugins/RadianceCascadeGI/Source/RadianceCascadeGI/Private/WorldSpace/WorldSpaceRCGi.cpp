@@ -449,6 +449,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->TableEntryIndex = TableEntryIndexUAV;
 				PassParameters->HashTableSize = kHashTableSize;
 				PassParameters->Cascade = i;
+				PassParameters->DisplayCascade = RC::WorldSpace::CVarDisplayCascade.GetValueOnRenderThread();
 				PassParameters->HistoryConservation = HistoryConservation;
 				PassParameters->NumCascades = kNumCascades;
 				PassParameters->HashTableSize = kHashTableSize;

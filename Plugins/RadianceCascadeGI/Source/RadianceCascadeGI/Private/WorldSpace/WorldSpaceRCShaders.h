@@ -170,6 +170,7 @@ public:
 		SHADER_PARAMETER(float, LevelBaseDist)
 		SHADER_PARAMETER(float, HistoryConservation)
 		SHADER_PARAMETER(uint32, Cascade)
+		SHADER_PARAMETER(uint32, DisplayCascade)
 		SHADER_PARAMETER(uint32, NumCascades)
 		SHADER_PARAMETER(uint32, BaseDirections)
 		SHADER_PARAMETER(uint32, FinalAtlasExtend)

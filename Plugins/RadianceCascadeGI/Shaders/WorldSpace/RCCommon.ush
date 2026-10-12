@@ -1,5 +1,5 @@
 
-static const float kFloatPackPrecision = 0.00001;
+static const float kFloatPackPrecision = 0.0001;
 static const float kInvFloatPackPrecision = (1 / kFloatPackPrecision);
 
 
@@ -14,8 +14,8 @@ float UnpackFloatUnsigned(uint Packed)
 }
 
 static const float kQualityRayCount = 256;
-static const float kMinProbeWeight = 2.0;
-static const uint kProbeBinLifetime= 8;
+static const float kMinProbeWeight = 3.0;
+static const uint kProbeBinLifetime= 16;
 
 static const float kInvTwoPi = 0.15915494309189535;
 
