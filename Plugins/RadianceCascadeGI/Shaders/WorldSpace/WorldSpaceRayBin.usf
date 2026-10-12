@@ -14,6 +14,7 @@ Texture2D SceneDepth;
 
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
+RWStructuredBuffer<uint> BinAge;
 RWStructuredBuffer<uint> BinCounts;
 RWStructuredBuffer<uint> DepositCounts;
 
@@ -76,7 +77,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float2 E = frac(R2Int(ProbeHash + BinIndex) + FrameJitter);
 
 	float3 Dir = UniformSampleSphere(E).xyz;
-	Dir *= sign(dot(Dir, N));
+	//Dir *= sign(dot(Dir, N));
 	Ray.Direction = Dir.
 		xyz;
 
@@ -104,30 +105,32 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	//Split ray into probe
 	uint RayCascade = kNumCascades - 1;
-	if (Payload.IsHit())
-	{
-		uint Level = ComputeLevel(WorldPos, CameraPos);
-
-		float FCascade = ceil(max(0.5 * log2(Payload.HitT / (kC0Len * LevelVoxelSize(Level))), 0.0));
-		RayCascade = min((uint)FCascade, kNumCascades - 1);
-	}
 
 
 	//Fill into containing cascades
-
+	uint2 LevelRange;
+	float2 LodWeights;
+	ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
 	for (
-		uint Cascade = 0; Cascade <=
-		RayCascade; ++Cascade)
+		uint Level = 0; Level < 2; ++Level)
 	{
-		uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
-		ProbeKeyInfo KeyData = UnpackProbeKey(Key);
-		uint2 LevelRange;
-		float2 LodWeights;
-		ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
-
-		for (
-			uint Level = 0; Level < 2; ++Level)
+		if (Payload.IsHit())
 		{
+			float FCascade = ceil(max(0.5 * log2(Payload.HitT / (kC0Len * LevelVoxelSize(LevelRange[Level]))), 0.0));
+			RayCascade = min((uint)FCascade, kNumCascades - 1);
+		}
+		if (Level == 1 && LodWeights.y == 0)
+		{
+			break;
+		}
+		for (
+			uint Cascade = 0; Cascade <=
+			RayCascade; ++Cascade)
+		{
+			uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+			ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+
+
 			uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> (Cascade + Level), LevelRange[Level]);
 
 			uint ProbeIndex = HashTableFind(CascadeKey, Cascade);
@@ -148,7 +151,11 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 				InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
 				InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : PackedLodWeight); // Transmittance
 				InterlockedAdd(Weights[SlotIndex], PackedLodWeight);
+                BinAge[SlotIndex] = View.StateFrameIndex;
 				InterlockedAdd(DepositCounts[Cascade * HashTableSize + ProbeIndex], PackedLodWeight);
+			}
+			else
+			{
 			}
 		}
 	}

@@ -51,7 +51,7 @@ namespace RC
 			ECVF_RenderThreadSafe);
 		TAutoConsoleVariable<float> CVarHistoryConservation(
 			TEXT("r.RC.WorldSpace.HistoryConservation"),
-			0.9,
+			0.9f,
 			TEXT("How much history to preserve during temporal accumulation, higher values take longer to update but have less flickering\n"),
 			ECVF_RenderThreadSafe);
 

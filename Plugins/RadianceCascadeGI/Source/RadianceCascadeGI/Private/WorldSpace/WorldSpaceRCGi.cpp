@@ -100,6 +100,11 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			sizeof(uint32), kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer,
 			TEXT("RC Cascade Probe Weights"));
+
+		FRDGBufferDesc BinAgeDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+		AllocatePooledBuffer(BinAgeDesc, BinAgeBuffer,
+			TEXT("RC Cascade Probe Bin last deposited frame"));
 	}
 
 
@@ -134,6 +139,10 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto WeightBuffer = GraphBuilder.RegisterExternalBuffer(ProbeWeightBuffer);
 		auto WeightUAV = GraphBuilder.CreateUAV(WeightBuffer);
 		auto WeightSRV = GraphBuilder.CreateSRV(WeightBuffer);
+
+		auto AgeBuffer = GraphBuilder.RegisterExternalBuffer(BinAgeBuffer);
+		auto AgeUAV = GraphBuilder.CreateUAV(AgeBuffer);
+
 
 		//Create RDG buffers
 
@@ -350,6 +359,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->HashTableSize = kHashTableSize;
 			PassParameters->TotalRadiance = RadianceUAV;
 			PassParameters->Weights = WeightUAV;
+			PassParameters->BinAge = AgeUAV;
 			PassParameters->BinCounts = BinCountBufferUAV;
 			PassParameters->DepositCounts = DepositCountBufferUAV;
 			PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
@@ -431,6 +441,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				FWorldSpaceRCMerging::FParameters* PassParameters = GraphBuilder.AllocParameters<
 					FWorldSpaceRCMerging::FParameters>();
 
+				PassParameters->View = ViewInfo.ViewUniformBuffer;
 				PassParameters->TableKeys = TableKeysUAV;
 				PassParameters->TableFreeList = TableFreeListUAV;
 				PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
@@ -448,6 +459,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->BaseDirections = kDirectionCount;
 				PassParameters->ProbeRadiance = RadianceUAV;
 				PassParameters->ProbeWeights = WeightUAV;
+				PassParameters->BinAge = AgeUAV;
 				PassParameters->ProbeMergedRadiance = MergedRadianceUAV;
 				PassParameters->FinalIrradiance = ProbeFinalIrradianceUAV;
 				PassParameters->ProbeToFinalId = ProbeToFinalUAV;

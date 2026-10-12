@@ -19,6 +19,7 @@ float HistoryConservation;
 
 RWStructuredBuffer<uint4> ProbeRadiance;
 RWStructuredBuffer<uint> ProbeWeights;
+RWStructuredBuffer<uint> BinAge;
 StructuredBuffer<uint> ProbeDepositCount;
 
 RWStructuredBuffer<float4> ProbeMergedRadiance;
@@ -150,6 +151,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 			}
 		}
         float4 ParentRadiance = ParentRadianceWeight > 0.0001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
+		
         float3 ParentRadApplied = ParentRadiance.w > 0.0001 ? ParentRadiance.xyz / ParentRadiance.w : 0;
         float4 Radiance = (Weight > 0.0001)
 			                  ? 
@@ -222,9 +224,13 @@ void MainCS(uint2 GroupId : SV_GroupID,
 
 
 		//Reinsert own radiance with temporal decay
-		ProbeWeights[SlotIndex] = PackFloatUnsigned(Weight * HistoryConservation);
-		UnpackedRadiance *= HistoryConservation;
-		ProbeRadiance[SlotIndex] = uint4(PackFloatUnsigned(UnpackedRadiance.x), PackFloatUnsigned(UnpackedRadiance.y),
-		                                 PackFloatUnsigned(UnpackedRadiance.z), PackFloatUnsigned(UnpackedRadiance.w));
+        if (Weight > kMinProbeWeight || BinAge[SlotIndex] < View.StateFrameIndex-kProbeBinLifetime)
+		{
+
+			ProbeWeights[SlotIndex] = PackFloatUnsigned(Weight * HistoryConservation);
+			UnpackedRadiance *= HistoryConservation;
+			ProbeRadiance[SlotIndex] = uint4(PackFloatUnsigned(UnpackedRadiance.x), PackFloatUnsigned(UnpackedRadiance.y),
+			                                 PackFloatUnsigned(UnpackedRadiance.z), PackFloatUnsigned(UnpackedRadiance.w));
+		}
 	}
 }
