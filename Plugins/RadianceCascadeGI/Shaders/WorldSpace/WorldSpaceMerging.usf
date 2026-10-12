@@ -49,8 +49,8 @@ void MainCS(uint2 GroupId : SV_GroupID,
 	}
 
 	//Blend higher cascade
-	uint ProbeIndex = ActiveProbes[Cascade * HashTableSize + ProbeId];
-	uint64_t ProbeKey = TableKeys[(Cascade) * HashTableSize + ProbeIndex];
+    uint ProbeIndex = ActiveProbes[Cascade * MaximumProbes + ProbeId];
+    uint64_t ProbeKey = TableKeys[(Cascade) * MaximumProbes + ProbeIndex];
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
 	int3 ParentCell = (KeyData.Cell - 1) >> 1;
@@ -62,8 +62,8 @@ void MainCS(uint2 GroupId : SV_GroupID,
 
 	uint DirectionCount = BaseDirections << Cascade;
 
-	uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
-	uint ParentCascadeIndex = (Cascade + 1) * HashTableSize * BinsPerProbe(BaseDirections);
+    uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
+    uint ParentCascadeIndex = (Cascade + 1) * MaximumProbes * BinsPerProbe(BaseDirections);
 	uint ParentDirCount = BaseDirections << (Cascade + 1);
 
 	if (Lane < 8)
@@ -80,13 +80,13 @@ void MainCS(uint2 GroupId : SV_GroupID,
 		uint64_t CascadeKey = PackProbeKey(Corner, KeyData.Level);
 
 		uint ParentIndex = HashTableFind(CascadeKey, Cascade + 1);
-		if (ParentIndex < HashTableSize)
+        if (ParentIndex < MaximumProbes)
 		{
 			//Amount of rays this probe got, so lower ones are low quality
-			uint DepositCount = ProbeDepositCount[((Cascade + 1) * HashTableSize) + ParentIndex];
+            uint DepositCount = ProbeDepositCount[((Cascade + 1) * MaximumProbes) + ParentIndex];
 			if (DepositCount <= 0)
 			{
-				ParentIndices[c] = HashTableSize;
+                ParentIndices[c] = MaximumProbes;
 				ParentWeights[c] = 0;
 			}
 			else
@@ -99,7 +99,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 		}
 		else
 		{
-			ParentIndices[c] = HashTableSize;
+            ParentIndices[c] = MaximumProbes;
 			ParentWeights[c] = 0;
 		}
 	}
@@ -138,7 +138,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 			for (uint c = 0; c < 8; ++c)
 			{
 				uint ParentIndex = ParentIndices[c];
-				if (ParentIndex < HashTableSize)
+                if (ParentIndex < MaximumProbes)
 				{
 					float ParentWeight = ParentWeights[c];
 

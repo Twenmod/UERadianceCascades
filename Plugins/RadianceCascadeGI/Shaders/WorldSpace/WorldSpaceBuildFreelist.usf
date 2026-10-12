@@ -26,17 +26,19 @@ uint NumCascades;
 {
 	uint DataKeyId = DispatchThreadId;
 
-    
-    uint BaseTable = DataKeyId / HashTableSize;
-    uint Local = DataKeyId - BaseTable * HashTableSize;
-    if (BaseTable >= NumCascades || Local >= (HashTableSize >> (2 * BaseTable)))
-        return;
+
+	uint BaseTable = DataKeyId / MaximumProbes;
+	uint Local = DataKeyId - BaseTable * MaximumProbes;
+	if (BaseTable >= NumCascades || Local >= (MaximumProbes >> (2 * BaseTable)))
+	{
+		return;
+	}
 
 	//Find table
 	uint Table = 0;
 	for (int i = 0; i < NumCascades; ++i)
 	{
-        uint TableStart = i * HashTableSize;
+		uint TableStart = i * MaximumProbes;
 		if (DataKeyId >= TableStart)
 		{
 			Table = i;
@@ -54,48 +56,56 @@ uint NumCascades;
 	if (Occupied)
 	{
 		//Remove older probes
-		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - 2)
-        {
-            TableKeys[DataKeyId] = kInvalidKey;
-            Occupied = false;
+		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - kProbeLifetime)
+		{
+			TableKeys[DataKeyId] = kInvalidKey;
+			Occupied = false;
 
-            //Clear probe data
+			//Clear probe data
 			if (Table == 0)
 			{
 				BinCounts[DataKeyId] = 0;
 			}
-            DepositCounts[DataKeyId] = 0;
+			DepositCounts[DataKeyId] = 0;
 
-            uint LocalIndex = DataKeyId - Table * HashTableSize;;
-            uint CascadeIndex = Table * HashTableSize * BinsPerProbe(BaseDirections);
-            uint Bins = BinsPerProbe(BaseDirections << Table);
+			uint LocalIndex = DataKeyId - Table * MaximumProbes;
+			uint CascadeIndex = Table * MaximumProbes * BinsPerProbe(BaseDirections);
+			uint Bins = BinsPerProbe(BaseDirections << Table);
 
-            for (int i = 0; i < Bins; ++i)
-            {
-	            uint SlotIndex = CascadeIndex + LocalIndex * Bins + i;
+			for (int i = 0; i < Bins; ++i)
+			{
+				uint SlotIndex = CascadeIndex + LocalIndex * Bins + i;
 
-	            TotalRadiance[SlotIndex] = 0;
-                ProbeWeights[SlotIndex] = 0;
-            }
-        }
+				TotalRadiance[SlotIndex] = 0;
+				ProbeWeights[SlotIndex] = 0;
+			}
+		}
 		else
 		{
 			// Surviving probe
 			uint64_t Key = TableKeys[DataKeyId];
-            uint LocalIndex = DataKeyId - Table * HashTableSize;
-            HashTableAddIndex(Key, Table, LocalIndex);
-            uint ActiveIndex;
-            InterlockedAdd(ActiveCounter[Table], 1, ActiveIndex);
-            ActiveProbes[Table*HashTableSize + ActiveIndex] = LocalIndex;
-            DepositCounts[DataKeyId] = PackFloatUnsigned(UnpackFloatUnsigned(DepositCounts[DataKeyId]) * HistoryConservation);
-        }
+			uint LocalIndex = DataKeyId - Table * MaximumProbes;
+			HashTableAddIndex(Key, Table, LocalIndex);
+			uint ActiveIndex;
+			InterlockedAdd(ActiveCounter[Table], 1, ActiveIndex);
+			if (ActiveIndex >= MaximumProbes)
+			{
+				ActiveCounter[0] = 0;
+			}
+			else
+			{
+				ActiveProbes[Table * MaximumProbes + ActiveIndex] = LocalIndex;
+				DepositCounts[DataKeyId] = PackFloatUnsigned(
+					UnpackFloatUnsigned(DepositCounts[DataKeyId]) * HistoryConservation);
+			}
+		}
 	}
 
 	if (!Occupied)
 	{
 		uint FreeListIndex;
 		InterlockedAdd(TableFreeListIndex[Table], 1, FreeListIndex);
-        uint LocalIndex = DataKeyId - Table * HashTableSize;
-        TableFreeList[FreeListIndex] = LocalIndex;
-    }
+		uint LocalIndex = DataKeyId - Table * MaximumProbes;
+		TableFreeList[FreeListIndex] = LocalIndex;
+	}
 }

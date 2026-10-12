@@ -112,9 +112,9 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 
 			uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
 			uint Index = HashTableFind(CascadeKey, DisplayCascade);
-			if (Index < HashTableSize)
+            if (Index < MaximumProbes)
 			{
-				uint DepositCount = ProbeDepositCount[((DisplayCascade) * HashTableSize) + Index];
+                uint DepositCount = ProbeDepositCount[((DisplayCascade) * MaximumProbes) + Index];
 				if (DepositCount <= 0)
 				{
 					continue;

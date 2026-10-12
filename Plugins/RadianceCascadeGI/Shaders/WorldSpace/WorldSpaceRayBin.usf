@@ -51,7 +51,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 	uint TopProbeIndex = HashTableFind(TopKey, 0);
 
-	if (TopProbeIndex >= HashTableSize)
+	if (TopProbeIndex >= MaximumProbes)
 	{
 		//Shouldn't really be possible
 		return;
@@ -134,13 +134,13 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 			uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> (Cascade + Level), LevelRange[Level]);
 
 			uint ProbeIndex = HashTableFind(CascadeKey, Cascade);
-			if (ProbeIndex < HashTableSize)
+			if (ProbeIndex < MaximumProbes)
 			{
 				bool HitCascade = (Cascade == RayCascade);
 
 				uint DirectionCount = BaseDirections << Cascade;
 
-				uint CascadeIndex = Cascade * HashTableSize * BinsPerProbe(BaseDirections);
+uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
 				uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(
 					Dir.xyz, DirectionCount);
 				float3 Rad = HitCascade ? Radiance * LodWeights[Level] : float3(0, 0, 0);
@@ -152,7 +152,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 				InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : PackedLodWeight); // Transmittance
 				InterlockedAdd(Weights[SlotIndex], PackedLodWeight);
                 BinAge[SlotIndex] = View.StateFrameIndex;
-				InterlockedAdd(DepositCounts[Cascade * HashTableSize + ProbeIndex], PackedLodWeight);
+				InterlockedAdd(DepositCounts[Cascade * MaximumProbes + ProbeIndex], PackedLodWeight);
 			}
 			else
 			{

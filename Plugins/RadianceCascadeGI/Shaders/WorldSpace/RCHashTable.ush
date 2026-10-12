@@ -13,128 +13,146 @@ RWStructuredBuffer<uint> TableFreeListIndex;
 RWStructuredBuffer<uint64_t> TableEntryKeys;
 RWStructuredBuffer<uint> TableEntryIndex;
 uint HashTableSize;
+uint MaximumProbes;
 
 
 //Hash function
 uint MurmurFinalize32(uint h)
 {
-    h ^= h >> 16;
-    h *= 0x85ebca6bu;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35u;
-    h ^= h >> 16;
-    return h;
+	h ^= h >> 16;
+	h *= 0x85ebca6bu;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35u;
+	h ^= h >> 16;
+	return h;
 }
 
 
 static const uint64_t kInvalidKey = 0;
 
-// Returns true if key is added for the first time.
-bool HashTableAdd(uint64_t Key, uint Cascade, out uint OutIndex)
+enum HTResult : uint
 {
+	Failed,
+	Exists,
+	Added
+};
 
+// Returns true if key is added for the first time.
+HTResult HashTableAdd(uint64_t
+                      Key,
+                      uint Cascade, out
+                      uint OutIndex)
+{
 	//Get offset of this cascade's hashtable
-    uint TableBase = Cascade * HashTableSize;
-    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
-    uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
-	
-    LOOP
+	uint TableBase = Cascade * HashTableSize;
+	uint DataBase = Cascade * MaximumProbes;
+	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+	uint CascadeDataSize = MaximumProbes >> (2 * Cascade);
+	uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+
+	LOOP
 	ALLOW_UAV_CONDITION
 
-    for (uint i = 0; i < CascadeTableSize; i++)
-    {
+	for (uint i = 0; i < CascadeTableSize; i++)
+	{
 		//Get the key, and fill in invalid if gotten.
-        uint64_t EntryKey;
-        InterlockedCompareExchange(TableEntryKeys[TableBase + Index], kInvalidKey, Key, EntryKey);
-	    if (EntryKey == Key)
-        {
+		uint64_t EntryKey;
+		InterlockedCompareExchange(TableEntryKeys[TableBase + Index], kInvalidKey, Key, EntryKey);
+		if (EntryKey == Key)
+		{
 			//Already inserted
-            OutIndex = 0;
-            return false;
-        }else if (EntryKey == kInvalidKey)
-        {
-            uint FreeListIndex;
-            InterlockedAdd(TableFreeListIndex[Cascade], 1, FreeListIndex);
-            uint DataIndex = TableFreeList[FreeListIndex];
-        	TableEntryIndex[TableBase + Index] = DataIndex;
-            TableKeys[TableBase + DataIndex] = Key;
-            OutIndex = DataIndex;
-            return true;
-        }
-        
-		//Probe further, (could also use a different ratio for this)
-        Index = (Index + 1) % CascadeTableSize;
-    }
+			OutIndex = 0;
+			return Exists;
+		}
+		else if (EntryKey == kInvalidKey)
+		{
+			uint FreeListIndex;
+			InterlockedAdd(TableFreeListIndex[Cascade], 1, FreeListIndex);
+			if (FreeListIndex > DataBase + CascadeDataSize)
+			{
+				TableEntryIndex[TableBase + Index] = ~0u;
+                OutIndex = ~0u;
+				return Failed;
+			}
+			uint DataIndex = TableFreeList[FreeListIndex];
+			TableEntryIndex[TableBase + Index] = DataIndex;
+			TableKeys[DataBase + DataIndex] = Key;
+			OutIndex = DataIndex;
+			return Added;
+		}
 
-    //Table full
-    OutIndex = ~0u;
-    return false;
+		//Probe further, (could also use a different ratio for this)
+		Index = (Index + 1) % CascadeTableSize;
+	}
+
+	//Table full
+	OutIndex = ~0u;
+	return Failed;
 }
 
 // Returns true if key is added for the first time.
-bool HashTableAddIndex(uint64_t Key, uint Cascade, uint Index)
+HTResult HashTableAddIndex(uint64_t Key, uint Cascade, uint Index)
 {
-
 	//Get offset of this cascade's hashtable
-    uint TableBase = Cascade * HashTableSize;
-    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
-    uint KeyIndex = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
-	
-    LOOP
+	uint TableBase = Cascade * HashTableSize;
+	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+	uint KeyIndex = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+
+	LOOP
 	ALLOW_UAV_CONDITION
 
-    for (uint i = 0; i < CascadeTableSize; i++)
-    {
+	for (uint i = 0; i < CascadeTableSize; i++)
+	{
 		//Get the key, and fill in invalid if gotten.
-        uint64_t EntryKey;
-        InterlockedCompareExchange(TableEntryKeys[TableBase + KeyIndex], kInvalidKey, Key, EntryKey);
-        if (EntryKey == Key)
-        {
+		uint64_t EntryKey;
+		InterlockedCompareExchange(TableEntryKeys[TableBase + KeyIndex], kInvalidKey, Key, EntryKey);
+		if (EntryKey == Key)
+		{
 			//Already inserted
-            return false;
-        }
-        else if (EntryKey == kInvalidKey)
-        {
-            TableEntryIndex[TableBase + KeyIndex] = Index;
-            return true;
-        }
-        
-		//Probe further, (could also use a different ratio for this)
-        KeyIndex = (KeyIndex + 1) % CascadeTableSize;
-    }
+			return Exists;
+		}
+		else if (EntryKey == kInvalidKey)
+		{
+			TableEntryIndex[TableBase + KeyIndex] = Index;
+			return Added;
+		}
 
-    //Table full
-    return false;
+		//Probe further, (could also use a different ratio for this)
+		KeyIndex = (KeyIndex + 1) % CascadeTableSize;
+	}
+
+	//Table full
+	return Failed;
 }
 
 uint HashTableFind(uint64_t Key, uint Cascade)
 {
 	//Get offset of this cascade's hashtable
-    uint TableBase = Cascade * HashTableSize;
-    uint CascadeTableSize = HashTableSize >> (2 * Cascade);
-    uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
+	uint TableBase = Cascade * HashTableSize;
+	uint CascadeTableSize = HashTableSize >> (2 * Cascade);
+	uint Index = (MurmurFinalize32(uint(Key) ^ MurmurFinalize32(uint(Key >> 32)))) % CascadeTableSize;
 
-    LOOP
+	LOOP
 	ALLOW_UAV_CONDITION
 
-    for (uint i = 0; i < CascadeTableSize; i++)
-    {
+	for (uint i = 0; i < CascadeTableSize; i++)
+	{
 		//Get the key, and fill in invalid if gotten.
-        uint64_t EntryKey = TableEntryKeys[TableBase + Index];
-        if (EntryKey == Key)
-        {
-            return TableEntryIndex[TableBase + Index];
-        }
-        else if (EntryKey == kInvalidKey)
-        {
-            return HashTableSize;
-        }
-        
-		//Probe further, (could also use a different ratio for this)
-        Index = (Index + 1) % CascadeTableSize;
-    }
+		uint64_t EntryKey = TableEntryKeys[TableBase + Index];
+		if (EntryKey == Key)
+		{
+			return TableEntryIndex[TableBase + Index];
+		}
+		else if (EntryKey == kInvalidKey)
+		{
+			return MaximumProbes;
+		}
 
-    return HashTableSize;
+		//Probe further, (could also use a different ratio for this)
+		Index = (Index + 1) % CascadeTableSize;
+	}
+
+	return MaximumProbes;
 }
 
 //Layout of the key,

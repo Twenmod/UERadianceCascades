@@ -3,5 +3,5 @@
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint DispatchThreadId : SV_DispatchThreadID)
 {
     uint TableId = DispatchThreadId;
-    TableFreeListIndex[TableId] = TableId*HashTableSize;
+    TableFreeListIndex[TableId] = TableId*MaximumProbes;
 }

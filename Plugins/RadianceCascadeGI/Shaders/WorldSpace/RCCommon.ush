@@ -15,7 +15,8 @@ float UnpackFloatUnsigned(uint Packed)
 
 static const float kQualityRayCount = 256;
 static const float kMinProbeWeight = 3.0;
-static const uint kProbeBinLifetime= 16;
+static const uint kProbeLifetime= 1;
+static const uint kProbeBinLifetime= 12;
 
 static const float kInvTwoPi = 0.15915494309189535;
 

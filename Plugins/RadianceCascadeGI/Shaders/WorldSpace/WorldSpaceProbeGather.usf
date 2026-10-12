@@ -58,15 +58,24 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
         Key = PackProbeKey(KeyData.Cell >> Level, LevelRange[Level]);
 
 	    //Try add to table
-        uint Index = HashTableSize;
-        if (HashTableAdd(Key, 0, Index))
+        uint Index = MaximumProbes;
+        HTResult htRes = HashTableAdd(Key, 0, Index);
+        if (htRes == Added)
         {
 	        //Add to active probes for next passes
             uint Counter;
             InterlockedAdd(ActiveCounter[0], 1, Counter);
-            ActiveProbes[Counter] = Index;
-            TableLastOccupiedFrame[Index] = View.StateFrameIndex;
-        }else
+
+	        if (Counter >= MaximumProbes)
+            {
+                ActiveCounter[0] = 0;
+            }
+            else
+            {
+	            ActiveProbes[Counter] = Index;
+                TableLastOccupiedFrame[Index] = View.StateFrameIndex;
+            }
+        }else if (htRes == Exists)
         {
 	        //Still update the usage counter
             TableLastOccupiedFrame[HashTableFind(Key, 0)] = View.StateFrameIndex;

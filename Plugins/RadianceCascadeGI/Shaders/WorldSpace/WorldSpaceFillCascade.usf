@@ -27,25 +27,26 @@ uint Cascade;
 	}
 
 	//Split key into higher cascade
-	uint64_t ProbeKey = TableKeys[(Cascade - 1) * HashTableSize + ActiveProbes[((Cascade - 1) * HashTableSize) +
+	uint64_t ProbeKey = TableKeys[(Cascade - 1) * MaximumProbes + ActiveProbes[((Cascade - 1) * MaximumProbes) +
 		ProbeId]];
 
 	ProbeKeyInfo KeyData = UnpackProbeKey(ProbeKey);
 
     //Get parent key by halving position
 	uint64_t HighKey = PackProbeKey(KeyData.Cell >> 1, KeyData.Level);
-    uint Index = HashTableSize;
-    if (HashTableAdd(HighKey, Cascade, Index))
+    uint Index = MaximumProbes;
+    HTResult HtRes = HashTableAdd(HighKey, Cascade, Index);
+    if (HtRes == Added)
 	{
 		//Update indirect buffer
 		uint Counter;
 		InterlockedAdd(ActiveCounter[Cascade], 1, Counter);
-		ActiveProbes[(Cascade * HashTableSize) + Counter] = Index;
-        TableLastOccupiedFrame[(Cascade*HashTableSize)+Index] = View.StateFrameIndex;
+		ActiveProbes[(Cascade * MaximumProbes) + Counter] = Index;
+        TableLastOccupiedFrame[(Cascade * MaximumProbes) + Index] = View.StateFrameIndex;
 
-    }else
+    }else if (HtRes == Exists)
     {
 	    //Still update the usage counter
-        TableLastOccupiedFrame[(Cascade * HashTableSize) + HashTableFind(HighKey, Cascade)] = View.StateFrameIndex;
+        TableLastOccupiedFrame[(Cascade * MaximumProbes) + HashTableFind(HighKey, Cascade)] = View.StateFrameIndex;
     }
 }

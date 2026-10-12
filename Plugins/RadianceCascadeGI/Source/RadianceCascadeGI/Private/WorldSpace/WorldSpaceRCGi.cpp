@@ -22,8 +22,10 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		}));
 }
 
-static constexpr uint32 kHashTableSize = 1024 * 128;
-static constexpr uint32 kIrrAtlasExtend = 363; // should be sqrt(hashtablesize/max visible probes)
+static constexpr uint32 kMaximumProbes = 1024 * 128;
+static constexpr uint32 kHashTableSize = kMaximumProbes * 4;
+static constexpr uint32 kIrrAtlasExtend = 363; // should be at minimum sqrt(kMaximumProbes)
+
 
 //Cant change
 static constexpr uint32 kDirectionCount = 4;
@@ -78,33 +80,33 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 	{
 		//Create Hashmaps for probes
 		bInitialized = true;
-		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), kHashTableSize * kNumCascades);
+		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), kMaximumProbes * kNumCascades);
 		AllocatePooledBuffer(HTDesc, HashTableKeys, TEXT("RC Hash table data keys"));
 
 		FRDGBufferDesc HTOccupiedDesc =
-			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32_t), kHashTableSize * kNumCascades);
+			FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32_t), kMaximumProbes * kNumCascades);
 		AllocatePooledBuffer(HTOccupiedDesc, HashTableLastOccupied, TEXT("RC Hash table last frame occupied indices"));
 
 		//Allocate probes
 		FRDGBufferDesc ProbeRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32) * 4, kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+			sizeof(uint32) * 4, kNumCascades * kMaximumProbes * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(ProbeRadBufferDesc, ProbeRadianceBuffer,
 		                     TEXT("RC Cascade Probes Total Radiance and transmittance"));
 
 		FRDGBufferDesc ProbeDepositCountDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kNumCascades * kHashTableSize);
+			sizeof(uint32), kNumCascades * kMaximumProbes);
 		AllocatePooledBuffer(ProbeDepositCountDesc, ProbeDepositCountBuffer,
 		                     TEXT("RC Cascade Probe Ray Deposit Count"));
 
 		FRDGBufferDesc ProbeWeightBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+			sizeof(uint32), kNumCascades * kMaximumProbes * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(ProbeWeightBufferDesc, ProbeWeightBuffer,
-			TEXT("RC Cascade Probe Weights"));
+		                     TEXT("RC Cascade Probe Weights"));
 
 		FRDGBufferDesc BinAgeDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kNumCascades * kHashTableSize * (kDirectionCount * 2 * kDirectionCount));
+			sizeof(uint32), kNumCascades * kMaximumProbes * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(BinAgeDesc, BinAgeBuffer,
-			TEXT("RC Cascade Probe Bin last deposited frame"));
+		                     TEXT("RC Cascade Probe Bin last deposited frame"));
 	}
 
 
@@ -117,7 +119,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		float LevelBaseDist = RC::WorldSpace::CVarProbeHalfDistance.GetValueOnRenderThread();
 
 		auto SceneTextureParams = CreateSceneTextureShaderParameters(GraphBuilder, &ViewInfo.GetSceneTextures(),
-			ViewInfo.GetFeatureLevel());
+		                                                             ViewInfo.GetFeatureLevel());
 		auto Output = GraphBuilder.CreateUAV(Resources.SceneColor);
 
 		//Import pooled buffers
@@ -148,7 +150,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		// - HashTable
 		FRDGBufferDesc TableFreeListDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kNumCascades * kHashTableSize);
+			sizeof(uint32), kNumCascades * kMaximumProbes);
 		auto TableFreeList = GraphBuilder.CreateBuffer(TableFreeListDesc, TEXT("RC Table free list"));
 		auto TableFreeListUAV = GraphBuilder.CreateUAV(TableFreeList);
 		FRDGBufferDesc TableFreeListIndexDesc = FRDGBufferDesc::CreateStructuredDesc(
@@ -162,6 +164,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 
 			TShaderMapRef<FWorldSpaceRCClearFreeList> Shader(GlobalShaderMap);
 
@@ -183,10 +186,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto TableEntryIndexUAV = GraphBuilder.CreateUAV(TableEntryIndex);
 
 
-
-
 		FRDGBufferDesc ProbeBinCountDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kHashTableSize);
+			sizeof(uint32), kMaximumProbes);
 		auto BinCountBuffer = GraphBuilder.CreateBuffer(ProbeBinCountDesc, TEXT("RC Probe R2 bin count"));
 		auto BinCountBufferUAV = GraphBuilder.CreateUAV(BinCountBuffer);
 		auto BinCountBufferSRV = GraphBuilder.CreateSRV(BinCountBuffer);
@@ -195,7 +196,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize,
-			FComputeShaderUtils::kGolden2DGroupSize);
+		                                                           FComputeShaderUtils::kGolden2DGroupSize);
 		//Register active probes
 		FRDGBufferRef RDGActiveProbes;
 		FRDGBufferUAVRef ActiveProbeUAV;
@@ -203,7 +204,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		FRDGBufferRef RDGActiveProbeCount;
 		FRDGBufferUAVRef ActiveProbeCountUAV;
 		FRDGBufferSRVRef ActiveProbeCountSRV;
-		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), kHashTableSize * kNumCascades);
+		FRDGBufferDesc ActiveProbesDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(uint32), kMaximumProbes * kNumCascades);
 		FRDGBufferDesc ActiveProbesCounterDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint32), kNumCascades);
 
 		RDGActiveProbes = GraphBuilder.CreateBuffer(ActiveProbesDesc, TEXT("RC Active probes"));
@@ -211,7 +213,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		ActiveProbeSRV = GraphBuilder.CreateSRV(RDGActiveProbes);
 
 		RDGActiveProbeCount = GraphBuilder.CreateBuffer(ActiveProbesCounterDesc,
-			TEXT("RC Active probes counter"));
+		                                                TEXT("RC Active probes counter"));
 		ActiveProbeCountUAV = GraphBuilder.CreateUAV(RDGActiveProbeCount);
 		ActiveProbeCountSRV = GraphBuilder.CreateSRV(RDGActiveProbeCount);
 		AddClearUAVPass(GraphBuilder, ActiveProbeCountUAV, 0);
@@ -232,6 +234,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->TableEntryIndex = TableEntryIndexUAV;
 			PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->NumCascades = kNumCascades;
 			PassParameters->ActiveCounter = ActiveProbeCountUAV;
 			PassParameters->ActiveProbes = ActiveProbeUAV;
@@ -249,7 +252,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				RDG_EVENT_NAME("RC Build Freelist"),
 				Shader,
 				PassParameters,
-				FComputeShaderUtils::GetGroupCount(kHashTableSize * kNumCascades, 64));
+				FComputeShaderUtils::GetGroupCount(kMaximumProbes * kNumCascades, 64));
 		}
 		//Clear Freelist counter to tablestart
 		{
@@ -259,6 +262,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 
 			TShaderMapRef<FWorldSpaceRCClearFreeList> Shader(GlobalShaderMap);
 
@@ -283,6 +287,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->TableEntryKeys = TableEntryKeysUAV;
 			PassParameters->TableEntryIndex = TableEntryIndexUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
 			PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
@@ -318,6 +323,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->TableEntryKeys = TableEntryKeysUAV;
 				PassParameters->TableEntryIndex = TableEntryIndexUAV;
 				PassParameters->HashTableSize = kHashTableSize;
+				PassParameters->MaximumProbes = kMaximumProbes;
 				PassParameters->BaseVoxelSize = BaseVoxelSize;
 				PassParameters->LevelBaseDist = LevelBaseDist;
 
@@ -357,6 +363,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->TableEntryKeys = TableEntryKeysUAV;
 			PassParameters->TableEntryIndex = TableEntryIndexUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->TotalRadiance = RadianceUAV;
 			PassParameters->Weights = WeightUAV;
 			PassParameters->BinAge = AgeUAV;
@@ -391,8 +398,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				RDG_EVENT_NAME("RC TraceRays %dx%d", PassViewSize.X, PassViewSize.Y),
 				PassParameters,
 				ERDGPassFlags::Compute,
-				[PassParameters, RayGenShader, &ViewInfo, SceneUniformBuffer, NaniteRayTracingUniformBuffer, PassViewSize]
-				(FRDGAsyncTask, FRHICommandList& RHICmdList)
+				[PassParameters, RayGenShader, &ViewInfo, SceneUniformBuffer, NaniteRayTracingUniformBuffer,
+					PassViewSize]
+			(FRDGAsyncTask, FRHICommandList& RHICmdList)
 				{
 					FRHIBatchedShaderParameters& GlobalResources = RHICmdList.GetScratchShaderParameters();
 					SetShaderParameters(GlobalResources, RayGenShader, *PassParameters);
@@ -408,7 +416,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 					FRHIShaderBindingTable* SBT = ViewInfo.MaterialRayTracingData.ShaderBindingTable;
 
 					RHICmdList.RayTraceDispatch(Pipeline, RayGenShader.GetRayTracingShader(), SBT,
-						GlobalResources, PassViewSize.X, PassViewSize.Y);
+					                            GlobalResources, PassViewSize.X, PassViewSize.Y);
 				});
 		}
 
@@ -417,20 +425,23 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		//Map that maps probe to irradiance atlas
 		FRDGBufferDesc ProbeFinalMapDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(uint32), kHashTableSize);
+			sizeof(uint32), kMaximumProbes);
 		auto ProbeToFinalId = GraphBuilder.CreateBuffer(ProbeFinalMapDesc,
-			TEXT("RC Probe ID to Irradiance ID"));
+		                                                TEXT("RC Probe ID to Irradiance ID"));
 		auto ProbeToFinalUAV = GraphBuilder.CreateUAV(ProbeToFinalId);
 
 		//Final irradiance atlas
-		FRDGTextureDesc ProbeFinalIrradianceDesc = FRDGTextureDesc::Create2D(FIntPoint(kIrrAtlasExtend*8), PF_FloatRGBA, FClearValueBinding::Black, ETextureCreateFlags::UAV | ETextureCreateFlags::ShaderResource);
-		auto ProbeFinalIrradiance = GraphBuilder.CreateTexture(ProbeFinalIrradianceDesc, TEXT("RC Probe Irradiance atlas"));
-		auto ProbeFinalIrradianceUAV = GraphBuilder.CreateUAV( ProbeFinalIrradiance);
+		FRDGTextureDesc ProbeFinalIrradianceDesc = FRDGTextureDesc::Create2D(
+			FIntPoint(kIrrAtlasExtend * 8), PF_FloatRGBA, FClearValueBinding::Black,
+			ETextureCreateFlags::UAV | ETextureCreateFlags::ShaderResource);
+		auto ProbeFinalIrradiance = GraphBuilder.CreateTexture(ProbeFinalIrradianceDesc,
+		                                                       TEXT("RC Probe Irradiance atlas"));
+		auto ProbeFinalIrradianceUAV = GraphBuilder.CreateUAV(ProbeFinalIrradiance);
 
 		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 4, kNumCascades * (kHashTableSize * (kDirectionCount * 2 * kDirectionCount)) / 4);
+			sizeof(float) * 4, kNumCascades * (kMaximumProbes * (kDirectionCount * 2 * kDirectionCount)) / 4);
 		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc,
-			TEXT("RC Probe Merged radiance+weight"));
+		                                                      TEXT("RC Probe Merged radiance+weight"));
 		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
 		AddClearUAVPass(GraphBuilder, MergedRadianceUAV, 0);
 
@@ -447,12 +458,12 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
 				PassParameters->TableEntryKeys = TableEntryKeysUAV;
 				PassParameters->TableEntryIndex = TableEntryIndexUAV;
-				PassParameters->HashTableSize = kHashTableSize;
 				PassParameters->Cascade = i;
 				PassParameters->DisplayCascade = RC::WorldSpace::CVarDisplayCascade.GetValueOnRenderThread();
 				PassParameters->HistoryConservation = HistoryConservation;
 				PassParameters->NumCascades = kNumCascades;
 				PassParameters->HashTableSize = kHashTableSize;
+				PassParameters->MaximumProbes = kMaximumProbes;
 				PassParameters->BaseVoxelSize = BaseVoxelSize;
 				PassParameters->LevelBaseDist = LevelBaseDist;
 				PassParameters->ActiveProbes = ActiveProbeSRV;
@@ -500,6 +511,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->TableEntryKeys = TableEntryKeysUAV;
 			PassParameters->TableEntryIndex = TableEntryIndexUAV;
 			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
 			PassParameters->Intensity = RC::WorldSpace::CVarIntensity.GetValueOnRenderThread();
