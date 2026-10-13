@@ -18,6 +18,9 @@ RWStructuredBuffer<uint> DepositCounts;
 StructuredBuffer<float3> SecondaryHitPoints;
 StructuredBuffer<float3> SecondaryHitNormal;
 
+Texture2D<float4> FinalIrradiance;
+uint FinalAtlasExtend;
+
 uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
 
@@ -85,6 +88,34 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		true, // bEnableSkyLightContribution
 		Radiance);
 
+
+	//Read secondary(own) cache probes
+	//Possible to sample both levels here?
+	{
+		//  Find probe
+		uint64_t SecondKey = MakeProbeKey(
+			DFFastSubtractDemote(Payload.TranslatedWorldPos, PrimaryView.PreViewTranslation), CameraPos);
+		ProbeKeyInfo SecondKeyData = UnpackProbeKey(SecondKey);
+
+
+		uint64_t CascadeKey = PackProbeKey(SecondKeyData.Cell >> (kSecondaryProbeLodOffset),
+		                                   SecondKeyData.Level + kSecondaryProbeLodOffset);
+
+		uint FoundIndex = HashTableFind(CascadeKey, 0);
+		if (FoundIndex < MaximumProbes)
+		{
+			uint Tile = FoundIndex;
+			float2 Oct = UnitVectorToOctahedron(Payload.WorldNormal) * 0.5 + 0.5;
+			float2 Pixel = float2(Tile % FinalAtlasExtend, Tile / FinalAtlasExtend) * 8.0 + 1.0 + Oct * 6.0;
+			float2 AtlasSizePixels = (float2)FinalAtlasExtend * 8.0;
+			float4 SecondaryRadiance = FinalIrradiance.SampleLevel(GlobalBilinearClampedSampler,
+			                                                       Pixel / AtlasSizePixels, 0);
+			Radiance += SecondaryRadiance.w > 0.0001
+				            ? Payload.DiffuseColor *
+				            (SecondaryRadiance.xyz / SecondaryRadiance.w) * 1.0
+				            : 0;
+		}
+	}
 
 
 	//Split ray into secondary probe

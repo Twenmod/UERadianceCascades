@@ -86,7 +86,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	//Dir *= sign(dot(Dir, N));
 	Ray.Direction = Dir.
 		xyz;
-
+E
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,
 		TLAS,

@@ -459,6 +459,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->SecondaryHitNormal = SecondaryHitNormalSRV;
 			PassParameters->SecondaryHitPoints = SecondaryHitPointsSRV;
+			PassParameters->FinalIrradiance = ProbeFinalIrradianceSRV;
+			PassParameters->FinalAtlasExtend = kIrrAtlasExtend;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("RC Trace Secondary Rays %dx%d", PassViewSize.X, PassViewSize.Y),
