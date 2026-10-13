@@ -14,8 +14,6 @@ public:
 	void RenderDiffuseIndirectLight(const FScene& Scene,const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources);
 
 	bool bInitialized = false;
-	std::atomic<bool> bResetTable{ false };
-	TUniquePtr<FAutoConsoleCommand> ResetCommand;
 	TRefCountPtr<FRDGPooledBuffer> HashTableKeys;
 	TRefCountPtr<FRDGPooledBuffer> HashTableLastOccupied;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
@@ -24,4 +22,5 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitPositionBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitNormalBuffer;
+	TRefCountPtr<FRDGPooledBuffer> SecondaryHitRadianceBuffer;
 };

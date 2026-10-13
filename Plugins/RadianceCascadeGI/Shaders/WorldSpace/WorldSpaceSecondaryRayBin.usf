@@ -1,0 +1,147 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneTextureParameters.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "/Engine/Private/RayTracing/RayTracingDeferredShadingCommon.ush"
+#include "/Engine/Private/RayTracing/RayTracingLightingCommon.ush"
+#include "/Engine/Private/Random.ush"
+#include "/Engine/Private/MonteCarlo.ush"
+#include "RCHashTable.ush"
+#include "RCCommon.ush"
+RaytracingAccelerationStructure TLAS;
+
+RWStructuredBuffer<uint4> TotalRadiance;
+RWStructuredBuffer<uint> Weights;
+RWStructuredBuffer<uint> BinAge;
+RWStructuredBuffer<uint> DepositCounts;
+
+StructuredBuffer<float3> SecondaryHitPoints;
+StructuredBuffer<float3> SecondaryHitNormal;
+StructuredBuffer<float3> SecondaryHitRadiance;
+
+uint BaseDirections; // Currently assumed to be 4 (32 real directions)
+float NormalOffset;
+
+static const uint kNumCascades = 4;
+static const float kC0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 4 base directions
+
+float2 R2Int(uint i)
+{
+	return float2(i * 3242174889u, i * 2447445414u) * (1.0 / 4294967296.0);
+}
+
+RAY_TRACING_ENTRY_RAYGEN(MainRG)
+{
+	uint2 PixelId = DispatchRaysIndex().xy;
+
+	float3 WorldPos = SecondaryHitPoints[PixelId.y * View.BufferSizeAndInvSize.x + PixelId.x];
+	if (WorldPos.x >= POSITIVE_INFINITY)
+	{
+		//Invalid ray;
+		return;
+	}
+	float3 TranslatedWorld = DFFastAddDemote(WorldPos, PrimaryView.PreViewTranslation);
+	float3 Normal = SecondaryHitNormal[PixelId.y * View.BufferSizeAndInvSize.x + PixelId.x];
+	FRayDesc Ray;
+	Ray.Origin = TranslatedWorld +
+		Normal *
+		NormalOffset;
+	Ray.TMin = 0.001;
+	Ray.TMax = 100000.0;
+
+	float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
+
+	FRandomSequence RandSequence;
+	RandomSequence_Initialize(RandSequence, PixelId, 0, View.StateFrameIndex, 1);
+
+	FRayCone RayCone = (FRayCone)0;
+	RayCone.SpreadAngle = View.
+		EyeToPixelSpreadAngle;
+
+	float3 Radiance = 0;
+
+	float3 Dir = UniformSampleSphere(RandomSequence_GenerateSample2D(RandSequence)).xyz;
+	Ray.Direction = Dir.
+		xyz;
+
+	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
+		Ray,
+		TLAS,
+		TLAS, // FarFieldTLAS, unused when ENABLE_FAR_FIELD_TRACING==0
+		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		RAY_TRACING_MASK_OPAQUE,
+		RandSequence,
+		PixelId,
+		0.1, // ShadowMaxNormalBias
+		100000.0, // MaxTraceDistance
+		RAY_TRACING_SHADOWS_TYPE_HARD,
+		RAY_TRACING_SHADOWS_TRANSLUCENCY_TYPE_OPAQUE,
+		1, // ShouldDoDirectLighting
+		1, // ShouldDoEmissiveAndIndirectLighting
+		false, // bRayTraceSkyLightContribution
+		false, // bDecoupleSampleGeneration
+		false, // bIsCameraRay
+		RayCone,
+		true, // bEnableSkyLightContribution
+		Radiance);
+
+
+	//Split ray into secondary probe
+	uint RayCascade = kNumCascades - 1;
+
+	//Fill into containing cascades
+	uint2 LevelRange;
+	float2 LodWeights;
+	ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
+	for (
+		uint Level = 0; Level < 2; ++Level)
+	{
+		if (Payload.IsHit())
+		{
+			float FCascade = ceil(max(
+				0.5 * log2(Payload.HitT / (kC0Len * LevelVoxelSize(LevelRange[Level] + kSecondaryProbeLodOffset))),
+				0.0));
+			RayCascade = min((uint)FCascade, kNumCascades - 1);
+		}
+		if (Level == 1 && LodWeights.y == 0)
+		{
+			break;
+		}
+		for (
+			uint Cascade = 0; Cascade <=
+			RayCascade; ++Cascade)
+		{
+			uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+			ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+
+
+			uint64_t CascadeKey = PackProbeKey(KeyData.Cell >> (Cascade + Level + kSecondaryProbeLodOffset),
+			                                   LevelRange[Level] + kSecondaryProbeLodOffset);
+
+			uint ProbeIndex = HashTableFind(CascadeKey, Cascade);
+			if (ProbeIndex < MaximumProbes)
+			{
+				bool HitCascade = (Cascade == RayCascade);
+
+				uint DirectionCount = BaseDirections << Cascade;
+
+				uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
+				uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(
+					Dir.xyz, DirectionCount);
+				float3 Rad = HitCascade ? Radiance * LodWeights[Level] : float3(0, 0, 0);
+				uint PackedLodWeight = PackFloatUnsigned(LodWeights[Level]);
+				//Pack to uints to use atomics
+				InterlockedAdd(TotalRadiance[SlotIndex].x, PackFloatUnsigned(Rad.x));
+				InterlockedAdd(TotalRadiance[SlotIndex].y, PackFloatUnsigned(Rad.y));
+				InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
+				InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : PackedLodWeight); // Transmittance
+				InterlockedAdd(Weights[SlotIndex], PackedLodWeight);
+				BinAge[SlotIndex] = View.StateFrameIndex;
+				InterlockedAdd(DepositCounts[Cascade * MaximumProbes + ProbeIndex], PackedLodWeight);
+			}
+			else
+			{
+			}
+		}
+	}
+}

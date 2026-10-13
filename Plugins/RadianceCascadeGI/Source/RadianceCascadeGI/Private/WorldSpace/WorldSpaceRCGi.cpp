@@ -13,14 +13,6 @@
 
 FWorldSpaceRCGi::FWorldSpaceRCGi()
 {
-	ResetCommand = MakeUnique<FAutoConsoleCommand>(
-		TEXT("r.RC.ResetTable"),
-		TEXT("Reset hashtable."),
-		FConsoleCommandDelegate::CreateLambda([this]()
-		{
-			bResetTable.store(true, std::memory_order_release);
-		}));
-
 }
 
 static constexpr uint32 kMaximumProbes = 1024 * 256;
@@ -43,6 +35,8 @@ void FWorldSpaceRCGi::PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTra
 	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(View.GetFeatureLevel());
 	TShaderMapRef<FWorldSpaceRCRayBin> RayGenShader(ShaderMap);
 	OutRayGenShaders.Add(RayGenShader.GetRayTracingShader());
+	TShaderMapRef<FWorldSpaceRCSecondaryRayBin> SecondRayGenShader(ShaderMap);
+	OutRayGenShaders.Add(SecondRayGenShader.GetRayTracingShader());
 }
 
 void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FViewInfo& ViewInfo,
@@ -121,6 +115,10 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
 		AllocatePooledBuffer(SecondaryHitNormalDesc, SecondaryHitNormalBuffer,
 			TEXT("RC Hit normals for secondary cache"));
+		FRDGBufferDesc SecondaryHitRadianceDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
+		AllocatePooledBuffer(SecondaryHitRadianceDesc, SecondaryHitRadianceBuffer,
+			TEXT("RC Hit Radiance for secondary cache"));
 	}
 
 
@@ -167,6 +165,10 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto SecondaryHitNormal = GraphBuilder.RegisterExternalBuffer(SecondaryHitNormalBuffer);
 		auto SecondaryHitNormalUAV = GraphBuilder.CreateUAV(SecondaryHitNormal);
 		auto SecondaryHitNormalSRV = GraphBuilder.CreateSRV(SecondaryHitNormal);
+		
+		auto SecondaryHitRadiance = GraphBuilder.RegisterExternalBuffer(SecondaryHitRadianceBuffer);
+		auto SecondaryHitRadianceUAV = GraphBuilder.CreateUAV(SecondaryHitRadiance);
+		auto SecondaryHitRadianceSRV = GraphBuilder.CreateSRV(SecondaryHitRadiance);
 
 
 
@@ -413,6 +415,68 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 					IndirectBuffer, 0);
 			}
 		}
+		//Trace the secondary rays from last frame primary hits
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Trace/Bin Secondary Rays");
+			TShaderMapRef<FWorldSpaceRCSecondaryRayBin> RayGenShader(GlobalShaderMap);
+			FWorldSpaceRCSecondaryRayBin::FParameters* PassParameters = GraphBuilder.AllocParameters<
+				FWorldSpaceRCSecondaryRayBin::FParameters>();
+			PassParameters->TableKeys = TableKeysUAV;
+			PassParameters->TableFreeList = TableFreeListUAV;
+			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
+			PassParameters->TableEntryKeys = TableEntryKeysUAV;
+			PassParameters->TableEntryIndex = TableEntryIndexUAV;
+			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
+			PassParameters->TotalRadiance = RadianceUAV;
+			PassParameters->Weights = WeightUAV;
+			PassParameters->BinAge = AgeUAV;
+			PassParameters->DepositCounts = DepositCountBufferUAV;
+			PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
+			PassParameters->BaseDirections = kDirectionCount;
+			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
+			PassParameters->BaseVoxelSize = BaseVoxelSize;
+			PassParameters->LevelBaseDist = LevelBaseDist;
+
+			PassParameters->View = ViewInfo.ViewUniformBuffer;
+			PassParameters->RaytracingLightGridData = ViewInfo.RayTracingLightGridUniformBuffer;
+			auto SceneUniformBuffer = GetSceneUniformBufferRef(GraphBuilder, ViewInfo);
+			TRDGUniformBufferRef<FNaniteRayTracingUniformParameters> NaniteRayTracingUniformBuffer =
+				Nanite::GetPublicGlobalRayTracingUniformBuffer();
+
+			PassParameters->Scene = SceneUniformBuffer;
+			PassParameters->NaniteRayTracing = NaniteRayTracingUniformBuffer;
+
+			PassParameters->SecondaryHitNormal = SecondaryHitNormalSRV;
+			PassParameters->SecondaryHitPoints = SecondaryHitPointsSRV;
+			PassParameters->SecondaryHitRadiance = SecondaryHitRadianceSRV;
+
+			GraphBuilder.AddPass(
+				RDG_EVENT_NAME("RC Trace Secondary Rays %dx%d", PassViewSize.X, PassViewSize.Y),
+				PassParameters,
+				ERDGPassFlags::Compute,
+				[PassParameters, RayGenShader, &ViewInfo, SceneUniformBuffer, NaniteRayTracingUniformBuffer,
+				PassViewSize]
+				(FRDGAsyncTask, FRHICommandList& RHICmdList)
+				{
+					FRHIBatchedShaderParameters& GlobalResources = RHICmdList.GetScratchShaderParameters();
+					SetShaderParameters(GlobalResources, RayGenShader, *PassParameters);
+
+					TOptional<FScopedUniformBufferStaticBindings> StaticUniformBufferScope =
+						RayTracing::BindStaticUniformBufferBindings(
+							ViewInfo,
+							SceneUniformBuffer->GetRHI(),
+							NaniteRayTracingUniformBuffer->GetRHI(),
+							RHICmdList);
+
+					FRayTracingPipelineState* Pipeline = ViewInfo.MaterialRayTracingData.PipelineState;
+					FRHIShaderBindingTable* SBT = ViewInfo.MaterialRayTracingData.ShaderBindingTable;
+
+					RHICmdList.RayTraceDispatch(Pipeline, RayGenShader.GetRayTracingShader(), SBT,
+						GlobalResources, PassViewSize.X, PassViewSize.Y);
+				});
+		}
+
 		//Trace the scene per pixel and split into probes
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "RC Trace/Bin Rays");
@@ -459,6 +523,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->SecondaryHitNormal = SecondaryHitNormalUAV;
 			PassParameters->SecondaryHitPoints = SecondaryHitPointsUAV;
+			PassParameters->SecondaryHitRadiance = SecondaryHitRadianceUAV;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("RC TraceRays %dx%d", PassViewSize.X, PassViewSize.Y),
@@ -485,6 +550,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 					                            GlobalResources, PassViewSize.X, PassViewSize.Y);
 				});
 		}
+		
 
 		//Merge probes down
 

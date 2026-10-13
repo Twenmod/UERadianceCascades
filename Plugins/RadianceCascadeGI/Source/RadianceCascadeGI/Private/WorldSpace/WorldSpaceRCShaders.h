@@ -23,7 +23,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -63,7 +63,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -111,7 +111,7 @@ class FWorldSpaceRCRayBin : public FGlobalShader
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -124,6 +124,65 @@ class FWorldSpaceRCRayBin : public FGlobalShader
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitPoints)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitNormal)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitRadiance)
+	END_SHADER_PARAMETER_STRUCT()
+
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Params)
+	{
+		return ShouldCompileRayTracingShadersForProject(Params.Platform);
+	}
+
+	// REQUIRED. This is what binds you to the scene's material hit groups.
+	static ERayTracingPayloadType GetRayTracingPayloadType(const int32 PermutationId)
+	{
+		return ERayTracingPayloadType::RayTracingMaterial;
+	}
+
+	static const FShaderBindingLayout* GetShaderBindingLayout(const FShaderPermutationParameters& Parameters)
+	{
+		return RayTracing::GetShaderBindingLayout(Parameters.Platform);
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Params,
+		FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Params, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("ENABLE_MATERIALS"), 1);
+		OutEnvironment.SetDefine(TEXT("ENABLE_TWO_SIDED_GEOMETRY"), 1);
+		OutEnvironment.SetDefine(TEXT("SUPPORT_CONTACT_SHADOWS"), 1);
+	}
+};
+
+
+class FWorldSpaceRCSecondaryRayBin : public FGlobalShader
+{
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCSecondaryRayBin)
+	SHADER_USE_ROOT_PARAMETER_STRUCT(FWorldSpaceRCSecondaryRayBin, FGlobalShader)
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneUniformParameters, Scene)
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(RaytracingAccelerationStructure, TLAS)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FRayTracingLightGrid, RaytracingLightGridData)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
+		SHADER_PARAMETER(uint32, BaseDirections)
+		SHADER_PARAMETER(float, NormalOffset)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(uint32, MaximumProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, BinAge)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, DepositCounts)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitPoints)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitNormal)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitRadiance)
 	END_SHADER_PARAMETER_STRUCT()
 
 
@@ -168,7 +227,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -222,7 +281,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -270,7 +329,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
@@ -350,7 +409,7 @@ public:
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableEntryKeys)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)

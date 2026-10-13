@@ -99,7 +99,8 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 		{
 			break;
 		}
-		float LodVoxel = LevelVoxelSize(LevelRange[Level]) * float(1u << DisplayCascade);
+        uint Lod = LevelRange[Level] + kSecondaryProbeLodOffset;
+        float LodVoxel = LevelVoxelSize(Lod) * float(1u << DisplayCascade);
 		float3 FloatCell = WorldPos / LodVoxel - 0.5;
 		int3 Cell = int3(floor(FloatCell));
 		float3 Frac = FloatCell - float3(Cell);
@@ -110,7 +111,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 			float3 T = lerp(1.0 - Frac, Frac, float3(c & 1, (c >> 1) & 1, c >> 2));
 			float InterpWeight = T.x * T.y * T.z;
 
-			uint64_t CascadeKey = PackProbeKey(Corner, LevelRange[Level]);
+            uint64_t CascadeKey = PackProbeKey(Corner, Lod);
 			uint Index = HashTableFind(CascadeKey, DisplayCascade);
             if (Index < MaximumProbes)
 			{
@@ -144,9 +145,9 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	{
 		uint64_t DebugKey = MakeProbeKey(WorldPos, CameraPos);
 		ProbeKeyInfo data = UnpackProbeKey(DebugKey);
-        DebugKey = PackProbeKey(data.Cell >> (DisplayCascade), data.Level );
+        //DebugKey = PackProbeKey(data.Cell >> (DisplayCascade), data.Level );
 		//// Secondary probes
-        //DebugKey = PackProbeKey(data.Cell >> (DisplayCascade+kSecondaryProbeLodOffset), data.Level + kSecondaryProbeLodOffset);
+        DebugKey = PackProbeKey(data.Cell >> (DisplayCascade+kSecondaryProbeLodOffset), data.Level + kSecondaryProbeLodOffset);
 		uint DebugIndex = HashTableFind(DebugKey, DisplayCascade);
 		Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
 	}

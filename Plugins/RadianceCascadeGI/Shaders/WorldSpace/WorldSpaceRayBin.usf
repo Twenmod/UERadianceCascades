@@ -21,6 +21,7 @@ RWStructuredBuffer<uint> DepositCounts;
 //Outputs for the bounce cache
 RWStructuredBuffer<float3> SecondaryHitPoints;
 RWStructuredBuffer<float3> SecondaryHitNormal;
+RWStructuredBuffer<float3> SecondaryHitRadiance;
 
 uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
@@ -113,7 +114,8 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		SecondaryHitPoints[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x] = DFFastSubtractDemote(
 			Payload.TranslatedWorldPos, PrimaryView.PreViewTranslation);
 		SecondaryHitNormal[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x] = Payload.
-			WorldNormal;
+WorldNormal;
+        SecondaryHitRadiance[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x] = Radiance;
 	}
 	else
 	{
