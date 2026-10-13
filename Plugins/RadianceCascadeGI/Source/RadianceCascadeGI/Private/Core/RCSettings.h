@@ -105,13 +105,13 @@ public:
 			Tooltip = "Multiply output result", ClampMin = "0", UIMin = "0", UIMax = "1", EditCondition = "bWorldSpaceEnabled"
 		))
 
-	float WsIntensity = 1.0;
+	float WsIntensity = 1.0f;
 	UPROPERTY(EditAnywhere, config, Category = "World Space",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.NormalOffset",
 			DisplayName = "Normal offset",
 			Tooltip = "Offset rays from normal, avoids shadow acne", ClampMin = "0", UIMin = "0", UIMax = "10", EditCondition = "bWorldSpaceEnabled"
 		))
-	float WsNormalOffset = 1.0;
+	float WsNormalOffset = 1.0f;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
 		meta = (DisplayName = "Quality Preset",
 			ToolTip = "Presets for quality settings",
@@ -121,12 +121,12 @@ public:
 		meta = (ConsoleVariable = "r.RC.WorldSpace.ProbeSize",
 			DisplayName = "Probe size",
 			Tooltip = "Probe size in CM at LOD 0", ClampMin = "1", UIMin = "4", UIMax = "32", EditCondition = "bWorldSpaceEnabled"))
-	float WsProbeSize = 8.0;
+	float WsProbeSize = 8.0f;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.ProbeHalfDistance",
 			DisplayName = "Probe half distance",
 			Tooltip = "Doubles probe size every X CM", ClampMin = "1", UIMin = "50", UIMax = "400", EditCondition = "bWorldSpaceEnabled"))
-	float WsProbeHalfDist = 250.0;
+	float WsProbeHalfDist = 250.0f;
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Debug",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.DisplayCascade",
 			DisplayName = "Display from cascade",
@@ -140,7 +140,7 @@ public:
 		meta = (ConsoleVariable = "r.RC.WorldSpace.HistoryConservation",
 			DisplayName = "History conservation",
 			Tooltip = "How much to temporally accumulate history, higher values take longer to update but have less flickering", ClampMin = "0.0", ClampMax="1.0", UIMin = "0", UIMax = "0.999", EditCondition = "bWorldSpaceEnabled"))
-	float WsHistoryConservation = 0.9;
+	float WsHistoryConservation = 0.9f;
 
 	virtual FName GetCategoryName() const override { return FName("Plugins"); }
 

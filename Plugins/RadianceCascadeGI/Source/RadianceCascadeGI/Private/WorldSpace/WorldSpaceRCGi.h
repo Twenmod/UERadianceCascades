@@ -22,4 +22,6 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
 	TRefCountPtr<FRDGPooledBuffer> BinAgeBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
+	TRefCountPtr<FRDGPooledBuffer> SecondaryHitPositionBuffer;
+	TRefCountPtr<FRDGPooledBuffer> SecondaryHitNormalBuffer;
 };

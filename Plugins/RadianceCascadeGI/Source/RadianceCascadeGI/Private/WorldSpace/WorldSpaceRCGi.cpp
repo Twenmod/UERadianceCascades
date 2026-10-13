@@ -76,10 +76,12 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 	// Accesspoint to our Shaders
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
 
+	auto ViewExtend = ViewInfo.GetSceneTexturesConfig().Extent;
+
 	//Initialize pooled resources
 	if (!bInitialized)
 	{
-		//Create Hashmaps for probes
+		//Allocate Hashmap for probes
 		bInitialized = true;
 		FRDGBufferDesc HTDesc = FRDGBufferDesc::CreateStructuredDesc(sizeof(uint64_t), kMaximumProbes * kNumCascades);
 		AllocatePooledBuffer(HTDesc, HashTableKeys, TEXT("RC Hash table data keys"));
@@ -108,6 +110,17 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			sizeof(uint32), kNumCascades * kMaximumProbes * (kDirectionCount * 2 * kDirectionCount));
 		AllocatePooledBuffer(BinAgeDesc, BinAgeBuffer,
 		                     TEXT("RC Cascade Probe Bin last deposited frame"));
+
+		//Secondary hits
+		FRDGBufferDesc SecondaryHitPointsDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
+		AllocatePooledBuffer(SecondaryHitPointsDesc, SecondaryHitPositionBuffer,
+			TEXT("RC Hit positions for secondary cache"));
+		AddClearUAVFloatPass(GraphBuilder, GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalBuffer(SecondaryHitPositionBuffer)), INFINITY);
+		FRDGBufferDesc SecondaryHitNormalDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
+		AllocatePooledBuffer(SecondaryHitNormalDesc, SecondaryHitNormalBuffer,
+			TEXT("RC Hit normals for secondary cache"));
 	}
 
 
@@ -145,6 +158,16 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 		auto AgeBuffer = GraphBuilder.RegisterExternalBuffer(BinAgeBuffer);
 		auto AgeUAV = GraphBuilder.CreateUAV(AgeBuffer);
+
+		// - Secondary cache
+		auto SecondaryHitPoints = GraphBuilder.RegisterExternalBuffer(SecondaryHitPositionBuffer);
+		auto SecondaryHitPointsUAV = GraphBuilder.CreateUAV(SecondaryHitPoints);
+		auto SecondaryHitPointsSRV = GraphBuilder.CreateSRV(SecondaryHitPoints);
+
+		auto SecondaryHitNormal = GraphBuilder.RegisterExternalBuffer(SecondaryHitNormalBuffer);
+		auto SecondaryHitNormalUAV = GraphBuilder.CreateUAV(SecondaryHitNormal);
+		auto SecondaryHitNormalSRV = GraphBuilder.CreateSRV(SecondaryHitNormal);
+
 
 
 		//Create RDG buffers
@@ -193,6 +216,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto BinCountBufferUAV = GraphBuilder.CreateUAV(BinCountBuffer);
 		auto BinCountBufferSRV = GraphBuilder.CreateSRV(BinCountBuffer);
 		AddClearUAVPass(GraphBuilder, BinCountBufferUAV, 0);
+
 
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
@@ -394,6 +418,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->Scene = SceneUniformBuffer;
 			PassParameters->NaniteRayTracing = NaniteRayTracingUniformBuffer;
+
+			PassParameters->SecondaryHitNormal = SecondaryHitNormalUAV;
+			PassParameters->SecondaryHitPoints = SecondaryHitPointsUAV;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("RC TraceRays %dx%d", PassViewSize.X, PassViewSize.Y),

@@ -18,6 +18,10 @@ RWStructuredBuffer<uint> BinAge;
 RWStructuredBuffer<uint> BinCounts;
 RWStructuredBuffer<uint> DepositCounts;
 
+//Outputs for the bounce cache
+RWStructuredBuffer<float3> SecondaryHitPoints;
+RWStructuredBuffer<float3> SecondaryHitNormal;
+
 uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
 
@@ -33,6 +37,10 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 {
 	uint2 PixelCoord = DispatchRaysIndex().xy + View.ViewRectMin.xy;
 	float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
+
+//Debug
+    	Output[PixelCoord] = float4(SecondaryHitNormal[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x],1.0);
+
 
 	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
 
@@ -103,9 +111,24 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		Radiance);
 
 
+	//Fill in secondary hit cache
+	if (Payload.IsHit())
+	{
+		SecondaryHitPoints[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x] = DFHackToFloat(
+			Payload.TranslatedWorldPos);
+		SecondaryHitNormal[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x] = Payload.
+			WorldNormal;
+	}
+	else
+	{
+		//Invalid hit marker
+		SecondaryHitPoints[PixelCoord.y * View.BufferSizeAndInvSize.x + PixelCoord.x].x =
+			POSITIVE_INFINITY;
+	}
+
+
 	//Split ray into probe
 	uint RayCascade = kNumCascades - 1;
-
 
 	//Fill into containing cascades
 	uint2 LevelRange;
@@ -140,7 +163,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 
 				uint DirectionCount = BaseDirections << Cascade;
 
-uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
+				uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
 				uint SlotIndex = CascadeIndex + ProbeIndex * BinsPerProbe(DirectionCount) + DirToLinear(
 					Dir.xyz, DirectionCount);
 				float3 Rad = HitCascade ? Radiance * LodWeights[Level] : float3(0, 0, 0);
@@ -151,7 +174,7 @@ uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
 				InterlockedAdd(TotalRadiance[SlotIndex].z, PackFloatUnsigned(Rad.z));
 				InterlockedAdd(TotalRadiance[SlotIndex].w, HitCascade ? 0u : PackedLodWeight); // Transmittance
 				InterlockedAdd(Weights[SlotIndex], PackedLodWeight);
-                BinAge[SlotIndex] = View.StateFrameIndex;
+				BinAge[SlotIndex] = View.StateFrameIndex;
 				InterlockedAdd(DepositCounts[Cascade * MaximumProbes + ProbeIndex], PackedLodWeight);
 			}
 			else
