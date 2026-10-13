@@ -20,9 +20,10 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 		{
 			bResetTable.store(true, std::memory_order_release);
 		}));
+
 }
 
-static constexpr uint32 kMaximumProbes = 1024 * 128;
+static constexpr uint32 kMaximumProbes = 1024 * 256;
 static constexpr uint32 kHashTableSize = kMaximumProbes * 4;
 static constexpr uint32 kIrrAtlasExtend = 363; // should be at minimum sqrt(kMaximumProbes)
 

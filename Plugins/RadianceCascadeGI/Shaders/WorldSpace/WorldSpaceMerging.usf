@@ -153,7 +153,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
 			}
 		}
         float4 ParentRadiance = ParentRadianceWeight > 0.0001 ? (ParentRadianceSum / ParentRadianceWeight) : 0;
-		
+
         float3 ParentRadApplied = ParentRadiance.w > 0.0001 ? ParentRadiance.xyz / ParentRadiance.w : 0;
         float4 Radiance = (Weight > 0.0001)
 			                  ? 

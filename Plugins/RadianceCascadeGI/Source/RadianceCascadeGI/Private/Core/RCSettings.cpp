@@ -8,10 +8,6 @@ URCSettings::URCSettings(const FObjectInitializer& ObjectInitializer)
 	CategoryName = TEXT("Plugins");
 	SectionName = TEXT("Radiance Cascades");
 
-#if WITH_EDITOR
-	SetSPPreset(ScreenSpaceQualityPreset);
-	SetWPPreset(WorldSpaceQualityPreset);
-#endif
 }
 
 #if WITH_EDITOR
@@ -48,6 +44,13 @@ void URCSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedE
 
 
 }
+void URCSettings::PostInitProperties()
+{
+	Super::PostInitProperties();
+	SetSPPreset(ScreenSpaceQualityPreset);
+	SetWPPreset(WorldSpaceQualityPreset);
+}
+
 void URCSettings::SetSPPreset(ERCScreenSpaceQualityPreset Preset)
 {
 	switch (Preset)
@@ -78,16 +81,16 @@ void URCSettings::SetWPPreset(ERCWorldSpaceQualityPreset Preset)
 	switch (Preset)
 	{
 		case ERCWorldSpaceQualityPreset::Low:
-			WsProbeSize = 24;
-			WsProbeHalfDist = 200;
+			WsProbeSize = 12;
+			WsProbeHalfDist = 550;
 			break;
 		case ERCWorldSpaceQualityPreset::Medium:
-			WsProbeSize = 12;
-			WsProbeHalfDist = 250;
+			WsProbeSize = 8;
+			WsProbeHalfDist = 700;
 			break;
 		case ERCWorldSpaceQualityPreset::High:
-			WsProbeSize = 8;
-			WsProbeHalfDist = 300;
+			WsProbeSize = 6;
+			WsProbeHalfDist = 800;
 			break;
 		case ERCWorldSpaceQualityPreset::Custom:
 			break;

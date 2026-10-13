@@ -159,5 +159,5 @@ uint CascadeIndex = Cascade * MaximumProbes * BinsPerProbe(BaseDirections);
 			}
 		}
 	}
-	//Output[PixelCoord] = float4(Radiance * 2*PI,1.0);
+	//Output[PixelCoord] = float4(Radiance*GBuffer.BaseColor,1.0);
 }

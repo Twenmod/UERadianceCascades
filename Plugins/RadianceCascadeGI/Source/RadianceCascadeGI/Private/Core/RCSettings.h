@@ -31,6 +31,7 @@ public:
 	URCSettings(const FObjectInitializer& ObjectInitializer);
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void PostInitProperties() override;
 #endif
 
 	//Screen space
