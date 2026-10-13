@@ -13,3 +13,5 @@ IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCBuildFreeList, "/Plugins/RadianceCascadeGI/
 	SF_Compute);
 IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCClearFreeList, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceClearFreelist.usf", "MainCS",
 	SF_Compute);
+IMPLEMENT_GLOBAL_SHADER(FWorldSpaceRCInitSecondary, "/Plugins/RadianceCascadeGI/WorldSpace/WorldSpaceInitSecondary.usf", "MainCS",
+	SF_Compute);

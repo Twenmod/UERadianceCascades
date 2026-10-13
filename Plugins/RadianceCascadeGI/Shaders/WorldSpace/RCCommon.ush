@@ -16,10 +16,11 @@ float UnpackFloatUnsigned(uint Packed)
 static const float kQualityRayCount = 256;
 static const float kMinProbeWeight = 3.0;
 static const uint kProbeLifetime= 1;
+static const uint kSecondaryProbeLifetime= 16;
 static const uint kProbeBinLifetime= 12;
 
 //Should be >1 since using the same buffer can cause conflicts at lod blending
-static const uint SecondaryProbeLodOffset = 2;
+static const uint kSecondaryProbeLodOffset = 2;
 
 static const float kInvTwoPi = 0.15915494309189535;
 

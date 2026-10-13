@@ -331,6 +331,44 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters,
 				GroupCount);
 		}
+
+		//Secondary gather/init. Initialize secondary probes using last frames ray hits
+		{
+			RDG_EVENT_SCOPE(GraphBuilder, "RC Initialize secondary probes");
+			
+			FWorldSpaceRCInitSecondary::FParameters* PassParameters = GraphBuilder.AllocParameters<
+				FWorldSpaceRCInitSecondary::FParameters>();
+
+			PassParameters->View = ViewInfo.ViewUniformBuffer;
+			PassParameters->TableKeys = TableKeysUAV;
+			PassParameters->TableFreeList = TableFreeListUAV;
+			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
+			PassParameters->TableEntryKeys = TableEntryKeysUAV;
+			PassParameters->TableEntryIndex = TableEntryIndexUAV;
+			PassParameters->HashTableSize = kHashTableSize;
+			PassParameters->MaximumProbes = kMaximumProbes;
+			PassParameters->BaseVoxelSize = BaseVoxelSize;
+			PassParameters->LevelBaseDist = LevelBaseDist;
+			PassParameters->ProbeLifetime = HashTableOccupiedUAV;
+
+			PassParameters->Output = Output;
+			PassParameters->ActiveProbes = ActiveProbeUAV;
+			PassParameters->ActiveCounter = ActiveProbeCountUAV;
+			PassParameters->SecondaryHitNormal = SecondaryHitNormalSRV;
+			PassParameters->SecondaryHitPoints = SecondaryHitPointsSRV;
+
+			TShaderMapRef<FWorldSpaceRCInitSecondary> ComputeShader(GlobalShaderMap);
+
+			FComputeShaderUtils::AddPass(
+				GraphBuilder,
+				RDG_EVENT_NAME("RC Init secondary pass %dx%d", PassViewSize.X, PassViewSize.Y),
+				ComputeShader,
+				PassParameters,
+				GroupCount);
+
+		}
+
+
 		//Fill further cascades using the filled probes from the lowest one, bottom to top
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "RC Fill cascade probes");

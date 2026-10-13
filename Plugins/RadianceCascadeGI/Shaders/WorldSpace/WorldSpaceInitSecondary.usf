@@ -1,0 +1,81 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/DeferredShadingCommon.ush"
+#include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/BlueNoise.ush"
+
+#include "RCHashTable.ush"
+#include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "RCCommon.ush"
+
+
+
+StructuredBuffer<float3> SecondaryHitPoints;
+StructuredBuffer<float3> SecondaryHitNormal;
+
+RWStructuredBuffer<uint> ActiveProbes;
+RWStructuredBuffer<uint> ActiveCounter;
+
+RWStructuredBuffer<uint> ProbeLifetime;
+
+
+[numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
+{
+    uint2 PixelId = DispatchThreadId;
+	
+	// Check that we are in scope
+    if (any(DispatchThreadId >= View.BufferSizeAndInvSize.xy))
+        return;
+
+
+    float3 WorldPos = SecondaryHitPoints[PixelId.y * View.BufferSizeAndInvSize.x + PixelId.x];
+    if (WorldPos.x >= POSITIVE_INFINITY)
+    {
+		//Invalid ray;
+        return;
+    }
+    float3 CameraPos = DFHackToFloat(PrimaryView.WorldCameraOrigin);
+
+    uint64_t Key = MakeProbeKey(WorldPos, CameraPos);
+    ProbeKeyInfo KeyData = UnpackProbeKey(Key);
+
+    uint2 LevelRange;
+    float2 LodWeights;
+    ComputeLevelRange(WorldPos, CameraPos, LevelRange, LodWeights);
+
+    for (uint Level = 0; Level < 2; ++Level)
+    {
+        if (Level == 1 && LodWeights.y == 0)
+        {
+            break;
+        }
+		//Secondary cache is higher lod, at least 2 higher so it does not conflict in the same HT
+        uint LodLevel = LevelRange[Level] + kSecondaryProbeLodOffset;
+
+        Key = PackProbeKey(KeyData.Cell >> (kSecondaryProbeLodOffset+Level), LodLevel);
+
+	    //Try add to table
+        uint Index = MaximumProbes;
+        HTResult htRes = HashTableAdd(Key, 0, Index);
+        if (htRes == Added)
+        {
+	        //Add to active probes for next passes
+            uint Counter;
+            InterlockedAdd(ActiveCounter[0], 1, Counter);
+
+            if (Counter >= MaximumProbes)
+            {
+                ActiveCounter[0] = 0;
+            }
+            else
+            {
+                ActiveProbes[Counter] = Index;
+                ProbeLifetime[Index] = kSecondaryProbeLifetime; // Longer lifetime than primary probes since they can miss
+            }
+        }
+        else if (htRes == Exists)
+        {
+	        //Still update the usage counter
+            ProbeLifetime[HashTableFind(Key, 0)] = kSecondaryProbeLifetime;
+        }
+    }
+}

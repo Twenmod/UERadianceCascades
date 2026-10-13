@@ -334,3 +334,46 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
 	}
 };
+
+
+
+class RADIANCECASCADEGI_API FWorldSpaceRCInitSecondary : public FGlobalShader
+{
+public:
+	DECLARE_GLOBAL_SHADER(FWorldSpaceRCInitSecondary)
+
+	SHADER_USE_PARAMETER_STRUCT(FWorldSpaceRCInitSecondary, FGlobalShader)
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint64_t>, TableKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeList)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableFreeListIndex)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryKeys)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
+		SHADER_PARAMETER(uint32, HashTableSize)
+		SHADER_PARAMETER(uint32, MaximumProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, ProbeLifetime)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveProbes)
+		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint32>, ActiveCounter)
+		SHADER_PARAMETER(float, BaseVoxelSize)
+		SHADER_PARAMETER(float, LevelBaseDist)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitPoints)
+		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitNormal)
+	END_SHADER_PARAMETER_STRUCT()
+
+	// Basic shader initialization
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM6);
+	}
+
+	// Define environment variables used by compute shader
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		OutEnvironment.SetDefine(TEXT("THREADS_X"), 16);
+		OutEnvironment.SetDefine(TEXT("THREADS_Y"), 16);
+		OutEnvironment.SetDefine(TEXT("THREADS_Z"), 1);
+	}
+};

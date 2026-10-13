@@ -21,8 +21,6 @@ RWStructuredBuffer<uint> ProbeLifetime;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
-//Hash to color debug
-
 
 [numthreads(THREADS_X, THREADS_Y, THREADS_Z)]void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 {
