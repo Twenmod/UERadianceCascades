@@ -183,14 +183,7 @@ void MainCS(uint2 GroupId : SV_GroupID,
             }
             GroupMemoryBarrierWithGroupSync();
 
-            //Active(dense) list index since output is dense.
-            uint TextureTile = ProbeId;
-            //1 writes map
-			if (Lane == 0)
-            {
-	            ProbeToFinalId[ProbeIndex] = TextureTile;
-            }
-
+            uint TextureTile = ProbeIndex;
             uint2 Origin = uint2(TextureTile % FinalAtlasExtend, TextureTile / FinalAtlasExtend) * 8; // 8 is the 6x6 map plus a border for interp
             for (uint p = Lane; p < (8*8); p += 32)
             {

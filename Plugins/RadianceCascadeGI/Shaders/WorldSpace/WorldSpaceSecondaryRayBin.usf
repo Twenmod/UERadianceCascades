@@ -17,7 +17,6 @@ RWStructuredBuffer<uint> DepositCounts;
 
 StructuredBuffer<float3> SecondaryHitPoints;
 StructuredBuffer<float3> SecondaryHitNormal;
-StructuredBuffer<float3> SecondaryHitRadiance;
 
 uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
@@ -61,6 +60,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	float3 Radiance = 0;
 
 	float3 Dir = UniformSampleSphere(RandomSequence_GenerateSample2D(RandSequence)).xyz;
+	Dir *= sign(dot(Dir, Normal));
 	Ray.Direction = Dir.
 		xyz;
 
@@ -84,6 +84,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		RayCone,
 		true, // bEnableSkyLightContribution
 		Radiance);
+
 
 
 	//Split ray into secondary probe

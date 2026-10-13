@@ -17,7 +17,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 
 static constexpr uint32 kMaximumProbes = 1024 * 256;
 static constexpr uint32 kHashTableSize = kMaximumProbes * 4;
-static constexpr uint32 kIrrAtlasExtend = 363; // should be at minimum sqrt(kMaximumProbes)
+static constexpr uint32 kIrrAtlasExtend = 512; // should be at minimum sqrt(kMaximumProbes)
 
 
 //Cant change
@@ -105,6 +105,15 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		AllocatePooledBuffer(BinAgeDesc, BinAgeBuffer,
 		                     TEXT("RC Cascade Probe Bin last deposited frame"));
 
+
+		//Final irradiance atlas
+		FRDGTextureDesc ProbeFinalIrradianceDesc = FRDGTextureDesc::Create2D(
+			FIntPoint(kIrrAtlasExtend * 8), PF_FloatRGBA, FClearValueBinding::Black,
+			ETextureCreateFlags::UAV | ETextureCreateFlags::ShaderResource);
+		AllocatePooledTexture(ProbeFinalIrradianceDesc, FinalIrradianceAtlas, TEXT("RC Probe Irradiance atlas"));
+
+
+
 		//Secondary hits
 		FRDGBufferDesc SecondaryHitPointsDesc = FRDGBufferDesc::CreateStructuredDesc(
 			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
@@ -115,10 +124,6 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
 		AllocatePooledBuffer(SecondaryHitNormalDesc, SecondaryHitNormalBuffer,
 			TEXT("RC Hit normals for secondary cache"));
-		FRDGBufferDesc SecondaryHitRadianceDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 3, ViewExtend.X * ViewExtend.Y);
-		AllocatePooledBuffer(SecondaryHitRadianceDesc, SecondaryHitRadianceBuffer,
-			TEXT("RC Hit Radiance for secondary cache"));
 	}
 
 
@@ -157,6 +162,11 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto AgeBuffer = GraphBuilder.RegisterExternalBuffer(BinAgeBuffer);
 		auto AgeUAV = GraphBuilder.CreateUAV(AgeBuffer);
 
+		auto ProbeFinalIrradiance = GraphBuilder.RegisterExternalTexture(FinalIrradianceAtlas
+		);
+		auto ProbeFinalIrradianceUAV = GraphBuilder.CreateUAV(ProbeFinalIrradiance);
+		auto ProbeFinalIrradianceSRV = GraphBuilder.CreateSRV(ProbeFinalIrradiance);
+
 		// - Secondary cache
 		auto SecondaryHitPoints = GraphBuilder.RegisterExternalBuffer(SecondaryHitPositionBuffer);
 		auto SecondaryHitPointsUAV = GraphBuilder.CreateUAV(SecondaryHitPoints);
@@ -166,12 +176,6 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		auto SecondaryHitNormalUAV = GraphBuilder.CreateUAV(SecondaryHitNormal);
 		auto SecondaryHitNormalSRV = GraphBuilder.CreateSRV(SecondaryHitNormal);
 		
-		auto SecondaryHitRadiance = GraphBuilder.RegisterExternalBuffer(SecondaryHitRadianceBuffer);
-		auto SecondaryHitRadianceUAV = GraphBuilder.CreateUAV(SecondaryHitRadiance);
-		auto SecondaryHitRadianceSRV = GraphBuilder.CreateSRV(SecondaryHitRadiance);
-
-
-
 		//Create RDG buffers
 
 		// - HashTable
@@ -220,6 +224,12 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		AddClearUAVPass(GraphBuilder, BinCountBufferUAV, 0);
 
 
+		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
+			sizeof(float) * 4, kNumCascades * (kMaximumProbes * (kDirectionCount * 2 * kDirectionCount)) / 4);
+		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc, TEXT("RC Probe Merged radiance+weight"));
+		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
+		auto MergedRadianceSRV = GraphBuilder.CreateSRV(MergedRadianceBuffer);
+		AddClearUAVPass(GraphBuilder, MergedRadianceUAV, 0);
 
 		FIntPoint PassViewSize = SceneColor.ViewRect.Size();
 		FIntVector GroupCount = FComputeShaderUtils::GetGroupCount(PassViewSize,
@@ -449,7 +459,6 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->SecondaryHitNormal = SecondaryHitNormalSRV;
 			PassParameters->SecondaryHitPoints = SecondaryHitPointsSRV;
-			PassParameters->SecondaryHitRadiance = SecondaryHitRadianceSRV;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("RC Trace Secondary Rays %dx%d", PassViewSize.X, PassViewSize.Y),
@@ -523,7 +532,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 
 			PassParameters->SecondaryHitNormal = SecondaryHitNormalUAV;
 			PassParameters->SecondaryHitPoints = SecondaryHitPointsUAV;
-			PassParameters->SecondaryHitRadiance = SecondaryHitRadianceUAV;
+			PassParameters->FinalIrradiance = ProbeFinalIrradianceSRV;
+			PassParameters->FinalAtlasExtend = kIrrAtlasExtend;
 
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("RC TraceRays %dx%d", PassViewSize.X, PassViewSize.Y),
@@ -562,20 +572,9 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		                                                TEXT("RC Probe ID to Irradiance ID"));
 		auto ProbeToFinalUAV = GraphBuilder.CreateUAV(ProbeToFinalId);
 
-		//Final irradiance atlas
-		FRDGTextureDesc ProbeFinalIrradianceDesc = FRDGTextureDesc::Create2D(
-			FIntPoint(kIrrAtlasExtend * 8), PF_FloatRGBA, FClearValueBinding::Black,
-			ETextureCreateFlags::UAV | ETextureCreateFlags::ShaderResource);
-		auto ProbeFinalIrradiance = GraphBuilder.CreateTexture(ProbeFinalIrradianceDesc,
-		                                                       TEXT("RC Probe Irradiance atlas"));
-		auto ProbeFinalIrradianceUAV = GraphBuilder.CreateUAV(ProbeFinalIrradiance);
 
-		FRDGBufferDesc ProbeMergedRadBufferDesc = FRDGBufferDesc::CreateStructuredDesc(
-			sizeof(float) * 4, kNumCascades * (kMaximumProbes * (kDirectionCount * 2 * kDirectionCount)) / 4);
-		auto MergedRadianceBuffer = GraphBuilder.CreateBuffer(ProbeMergedRadBufferDesc,
-		                                                      TEXT("RC Probe Merged radiance+weight"));
-		auto MergedRadianceUAV = GraphBuilder.CreateUAV(MergedRadianceBuffer);
-		AddClearUAVPass(GraphBuilder, MergedRadianceUAV, 0);
+		
+
 
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "RC Merge probes down");

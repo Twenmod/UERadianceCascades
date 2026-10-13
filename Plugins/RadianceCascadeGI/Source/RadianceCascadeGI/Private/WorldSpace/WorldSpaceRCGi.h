@@ -18,9 +18,9 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> HashTableLastOccupied;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeWeightBuffer;
+	TRefCountPtr<IPooledRenderTarget> FinalIrradianceAtlas;
 	TRefCountPtr<FRDGPooledBuffer> BinAgeBuffer;
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitPositionBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitNormalBuffer;
-	TRefCountPtr<FRDGPooledBuffer> SecondaryHitRadianceBuffer;
 };

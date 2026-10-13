@@ -115,16 +115,17 @@ class FWorldSpaceRCRayBin : public FGlobalShader
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, TableEntryIndex)
 		SHADER_PARAMETER(uint32, HashTableSize)
 		SHADER_PARAMETER(uint32, MaximumProbes)
+		SHADER_PARAMETER(uint32, FinalAtlasExtend)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint4>, TotalRadiance)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, Weights)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, BinAge)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, BinCounts)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<uint>, DepositCounts)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<float4>, FinalIrradiance)
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitPoints)
 		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitNormal)
-		SHADER_PARAMETER_RDG_BUFFER_UAV(RWStructuredBuffer<float3>, SecondaryHitRadiance)
 	END_SHADER_PARAMETER_STRUCT()
 
 
@@ -182,7 +183,6 @@ class FWorldSpaceRCSecondaryRayBin : public FGlobalShader
 		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FNaniteRayTracingUniformParameters, NaniteRayTracing)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitPoints)
 		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitNormal)
-		SHADER_PARAMETER_RDG_BUFFER_SRV(StructuredBuffer<float3>, SecondaryHitRadiance)
 	END_SHADER_PARAMETER_STRUCT()
 
 

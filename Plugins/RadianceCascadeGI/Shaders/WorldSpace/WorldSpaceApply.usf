@@ -99,7 +99,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 		{
 			break;
 		}
-        uint Lod = LevelRange[Level] + kSecondaryProbeLodOffset;
+        uint Lod = LevelRange[Level];
         float LodVoxel = LevelVoxelSize(Lod) * float(1u << DisplayCascade);
 		float3 FloatCell = WorldPos / LodVoxel - 0.5;
 		int3 Cell = int3(floor(FloatCell));
@@ -123,7 +123,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 
 				float DepositWeight = UnpackFloatUnsigned(DepositCount);
 
-				uint Tile = ProbeToFinalId[Index];
+				uint Tile = Index;
 				float2 Oct = UnitVectorToOctahedron(Normal) * 0.5 + 0.5;
 				float2 Pixel = float2(Tile % FinalAtlasExtend, Tile / FinalAtlasExtend) * 8.0 + 1.0 + Oct * 6.0;
 				float2 AtlasSizePixels = (float2)FinalAtlasExtend * 8.0;
@@ -137,7 +137,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	Output[PixelId] += float4((RadSum.xyz / RadSum.w) *
-	                          Intensity * PI * GBufferData.BaseColor, 0.0);
+	                          Intensity * GBufferData.BaseColor, 0.0);
 
 
 	//Debug output to see cells
