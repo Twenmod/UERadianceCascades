@@ -7,7 +7,7 @@
 
 //Where in the bigger buffer I cascade's table starts
 RWStructuredBuffer<uint> TableStarts;
-RWStructuredBuffer<uint> TableLastOccupiedFrame;
+RWStructuredBuffer<uint> ProbeLifetime;
 
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
@@ -56,7 +56,7 @@ uint NumCascades;
 	if (Occupied)
 	{
 		//Remove older probes
-		if (TableLastOccupiedFrame[DataKeyId] < View.StateFrameIndex - kProbeLifetime)
+		if (ProbeLifetime[DataKeyId] == 0)
 		{
 			TableKeys[DataKeyId] = kInvalidKey;
 			Occupied = false;
@@ -82,7 +82,9 @@ uint NumCascades;
 		}
 		else
 		{
-			// Surviving probe
+			// Re-add surviving probe
+            ProbeLifetime[DataKeyId] -= 1;
+
 			uint64_t Key = TableKeys[DataKeyId];
 			uint LocalIndex = DataKeyId - Table * MaximumProbes;
 			HashTableAddIndex(Key, Table, LocalIndex);

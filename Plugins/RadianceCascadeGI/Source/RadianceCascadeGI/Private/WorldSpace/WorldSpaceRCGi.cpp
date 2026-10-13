@@ -233,7 +233,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->TableFreeListIndex = TableFreeListIndexUAV;
 			PassParameters->TableEntryKeys = TableEntryKeysUAV;
 			PassParameters->TableEntryIndex = TableEntryIndexUAV;
-			PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
+			PassParameters->ProbeLifetime = HashTableOccupiedUAV;
 			PassParameters->HashTableSize = kHashTableSize;
 			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->NumCascades = kNumCascades;
@@ -291,7 +291,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->MaximumProbes = kMaximumProbes;
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
-			PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
+			PassParameters->ProbeLifetime = HashTableOccupiedUAV;
 
 			PassParameters->Output = Output;
 			PassParameters->ActiveProbes = ActiveProbeUAV;
@@ -329,7 +329,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 				PassParameters->LevelBaseDist = LevelBaseDist;
 
 
-				PassParameters->TableLastOccupiedFrame = HashTableOccupiedUAV;
+				PassParameters->ProbeLifetime = HashTableOccupiedUAV;
 
 				PassParameters->ActiveProbes = ActiveProbeUAV;
 				PassParameters->ActiveCounter = ActiveProbeCountUAV;

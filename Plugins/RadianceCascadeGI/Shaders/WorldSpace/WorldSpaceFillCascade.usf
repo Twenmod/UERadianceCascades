@@ -3,13 +3,13 @@
 #include "/Engine/Private/ScreenPass.ush"
 
 #include "RCHashTable.ush"
-
+#include "RCCommon.ush"
 
 // Shader parameters
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
-RWStructuredBuffer<uint> TableLastOccupiedFrame;
+RWStructuredBuffer<uint> ProbeLifetime;
 
 StructuredBuffer<uint4> TotalRadiance;
 StructuredBuffer<uint> Weights;
@@ -42,11 +42,11 @@ uint Cascade;
 		uint Counter;
 		InterlockedAdd(ActiveCounter[Cascade], 1, Counter);
 		ActiveProbes[(Cascade * MaximumProbes) + Counter] = Index;
-        TableLastOccupiedFrame[(Cascade * MaximumProbes) + Index] = View.StateFrameIndex;
+        ProbeLifetime[(Cascade * MaximumProbes) + Index] = kProbeLifetime;
 
     }else if (HtRes == Exists)
     {
 	    //Still update the usage counter
-        TableLastOccupiedFrame[(Cascade * MaximumProbes) + HashTableFind(HighKey, Cascade)] = View.StateFrameIndex;
+        ProbeLifetime[(Cascade * MaximumProbes) + HashTableFind(HighKey, Cascade)] = kProbeLifetime;
     }
 }

@@ -5,6 +5,7 @@
 
 #include "RCHashTable.ush"
 #include "/Engine/Private/RayTracing/RayTracingCommon.ush"
+#include "RCCommon.ush"
 
 
 // Shader parameters
@@ -16,7 +17,7 @@ RWStructuredBuffer<uint64_t> RWProbes;
 RWStructuredBuffer<uint> ActiveProbes;
 RWStructuredBuffer<uint> ActiveCounter;
 
-RWStructuredBuffer<uint> TableLastOccupiedFrame;
+RWStructuredBuffer<uint> ProbeLifetime;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
 
@@ -73,12 +74,12 @@ SCREEN_PASS_TEXTURE_VIEWPORT(SceneColorViewport)
             else
             {
 	            ActiveProbes[Counter] = Index;
-                TableLastOccupiedFrame[Index] = View.StateFrameIndex;
+                ProbeLifetime[Index] = kProbeLifetime;
             }
         }else if (htRes == Exists)
         {
 	        //Still update the usage counter
-            TableLastOccupiedFrame[HashTableFind(Key, 0)] = View.StateFrameIndex;
+            ProbeLifetime[HashTableFind(Key, 0)] = kProbeLifetime;
         }
     }
 }
