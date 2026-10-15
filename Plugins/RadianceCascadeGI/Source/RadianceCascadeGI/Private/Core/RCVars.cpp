@@ -54,6 +54,13 @@ namespace RC
 			0.9f,
 			TEXT("How much history to preserve during temporal accumulation, higher values take longer to update but have less flickering\n"),
 			ECVF_RenderThreadSafe);
+		TAutoConsoleVariable<int32> CVarEnableMultiBounce(
+			TEXT("r.RC.WorldSpace.Multibounce"),
+			1,
+			TEXT("Enable multi bounce, doubles RT cost\n")
+			TEXT(" 0: OFF;")
+			TEXT(" 1: ON."),
+			ECVF_RenderThreadSafe);
 
 	}
 	namespace ScreenSpace

@@ -81,15 +81,15 @@ void URCSettings::SetWPPreset(ERCWorldSpaceQualityPreset Preset)
 	switch (Preset)
 	{
 		case ERCWorldSpaceQualityPreset::Low:
-			WsProbeSize = 12;
+			WsProbeSize = 16;
 			WsProbeHalfDist = 550;
 			break;
 		case ERCWorldSpaceQualityPreset::Medium:
-			WsProbeSize = 8;
+			WsProbeSize = 16;
 			WsProbeHalfDist = 700;
 			break;
 		case ERCWorldSpaceQualityPreset::High:
-			WsProbeSize = 6;
+			WsProbeSize = 10;
 			WsProbeHalfDist = 800;
 			break;
 		case ERCWorldSpaceQualityPreset::Custom:

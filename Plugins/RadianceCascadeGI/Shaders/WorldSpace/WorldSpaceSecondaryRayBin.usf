@@ -85,12 +85,13 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 		false, // bDecoupleSampleGeneration
 		false, // bIsCameraRay
 		RayCone,
-		true, // bEnableSkyLightContribution
+		false, // bEnableSkyLightContribution
 		Radiance);
 
 
 	//Read secondary(own) cache probes
 	//Possible to sample both levels here?
+        if (Payload.IsHit())
 	{
 		//  Find probe
 		uint64_t SecondKey = MakeProbeKey(

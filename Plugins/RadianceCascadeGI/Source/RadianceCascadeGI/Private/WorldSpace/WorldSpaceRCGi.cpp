@@ -15,7 +15,7 @@ FWorldSpaceRCGi::FWorldSpaceRCGi()
 {
 }
 
-static constexpr uint32 kMaximumProbes = 1024 * 256;
+static constexpr uint32 kMaximumProbes = 1024 * 128;
 static constexpr uint32 kHashTableSize = kMaximumProbes * 4;
 static constexpr uint32 kIrrAtlasExtend = 512; // should be at minimum sqrt(kMaximumProbes)
 
@@ -71,6 +71,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 	FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ViewInfo.GetFeatureLevel());
 
 	auto ViewExtend = ViewInfo.GetSceneTexturesConfig().Extent;
+
+	bool bMultiBounceEnabled = RC::WorldSpace::CVarEnableMultiBounce.GetValueOnRenderThread() == 1;
 
 	//Initialize pooled resources
 	if (!bInitialized)
@@ -345,6 +347,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 		}
 
 		//Secondary gather/init. Initialize secondary probes using last frames ray hits
+		if (bMultiBounceEnabled)
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "RC Initialize secondary probes");
 			
@@ -426,6 +429,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			}
 		}
 		//Trace the secondary rays from last frame primary hits
+		if (bMultiBounceEnabled)
 		{
 			RDG_EVENT_SCOPE(GraphBuilder, "RC Trace/Bin Secondary Rays");
 			TShaderMapRef<FWorldSpaceRCSecondaryRayBin> RayGenShader(GlobalShaderMap);

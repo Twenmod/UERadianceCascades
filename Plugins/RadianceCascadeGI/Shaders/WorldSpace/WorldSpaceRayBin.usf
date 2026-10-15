@@ -86,7 +86,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	//Dir *= sign(dot(Dir, N));
 	Ray.Direction = Dir.
 		xyz;
-E
+
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,
 		TLAS,
@@ -105,7 +105,7 @@ E
 		false, // bDecoupleSampleGeneration
 		false, // bIsCameraRay
 		RayCone,
-		true, // bEnableSkyLightContribution
+false, // bEnableSkyLightContribution
 		Radiance);
 
 
@@ -126,6 +126,7 @@ E
 
 	//Read secondary cache probes
 	//Possible to sample both levels here?
+    if (Payload.IsHit())
 	{
 		//  Find probe
 uint64_t SecondKey = MakeProbeKey(DFFastSubtractDemote(Payload.TranslatedWorldPos, PrimaryView.PreViewTranslation), CameraPos);

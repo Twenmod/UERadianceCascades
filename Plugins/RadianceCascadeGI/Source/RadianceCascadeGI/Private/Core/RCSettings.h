@@ -127,6 +127,13 @@ public:
 			DisplayName = "Probe half distance",
 			Tooltip = "Doubles probe size every X CM", ClampMin = "1", UIMin = "50", UIMax = "400", EditCondition = "bWorldSpaceEnabled"))
 	float WsProbeHalfDist = 250.0f;
+
+	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
+		meta = (ConsoleVariable = "r.RC.WorldSpace.Multibounce",
+			DisplayName = "Multi bounce",
+			Tooltip = "Enable multiple bounces, increases cost ~2x", EditCondition = "bWorldSpaceEnabled"))
+	bool bMultiBounceEnabled = true;
+
 	UPROPERTY(EditAnywhere, config, Category = "World Space|Debug",
 		meta = (ConsoleVariable = "r.RC.WorldSpace.DisplayCascade",
 			DisplayName = "Display from cascade",

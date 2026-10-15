@@ -137,7 +137,7 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	}
 
 	Output[PixelId] += float4((RadSum.xyz / RadSum.w) *
-	                          Intensity * GBufferData.BaseColor, 0.0);
+	                          Intensity * GBufferData.BaseColor * View.PreExposure, 0.0);
 
 
 	//Debug output to see cells
@@ -145,9 +145,9 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 	{
 		uint64_t DebugKey = MakeProbeKey(WorldPos, CameraPos);
 		ProbeKeyInfo data = UnpackProbeKey(DebugKey);
-        //DebugKey = PackProbeKey(data.Cell >> (DisplayCascade), data.Level );
+        DebugKey = PackProbeKey(data.Cell >> (DisplayCascade), data.Level );
 		//// Secondary probes
-        DebugKey = PackProbeKey(data.Cell >> (DisplayCascade+kSecondaryProbeLodOffset), data.Level + kSecondaryProbeLodOffset);
+        //DebugKey = PackProbeKey(data.Cell >> (DisplayCascade+kSecondaryProbeLodOffset), data.Level + kSecondaryProbeLodOffset);
 		uint DebugIndex = HashTableFind(DebugKey, DisplayCascade);
 		Output[PixelId] = float4(ColorFromHash1(MurmurFinalize32(DebugIndex)), 1.0);
 	}
