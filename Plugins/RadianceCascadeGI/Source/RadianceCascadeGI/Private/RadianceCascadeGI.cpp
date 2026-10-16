@@ -37,6 +37,7 @@ void FRadianceCascadeGIModule::StartupModule()
 				if (RC::WorldSpace::CVarEnabled.GetValueOnRenderThread())
 					bAnyRayTracingPassEnabled = true;
 			});
+
 	//Hot reload debugging todo: remove
 #if WITH_EDITOR
 	WatchedShaderDir = WSPluginShaderDir;

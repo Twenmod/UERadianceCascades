@@ -5,15 +5,8 @@
 #include "DataDrivenShaderPlatformInfo.h"
 #include "DeferredShadingRenderer.h"
 
-class FWorldSpaceRCGi
+struct RCViewData
 {
-public:
-	FWorldSpaceRCGi();
-
-	void PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
-	void RenderDiffuseIndirectLight(const FScene& Scene,const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources);
-
-	bool bInitialized = false;
 	TRefCountPtr<FRDGPooledBuffer> HashTableKeys;
 	TRefCountPtr<FRDGPooledBuffer> HashTableLastOccupied;
 	TRefCountPtr<FRDGPooledBuffer> ProbeRadianceBuffer;
@@ -23,4 +16,17 @@ public:
 	TRefCountPtr<FRDGPooledBuffer> ProbeDepositCountBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitPositionBuffer;
 	TRefCountPtr<FRDGPooledBuffer> SecondaryHitNormalBuffer;
+	bool bInitialized = false;
+};
+
+class FWorldSpaceRCGi
+{
+public:
+	FWorldSpaceRCGi();
+
+	void PrepareRayTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+	void RenderDiffuseIndirectLight(const FScene& Scene,const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& Resources);
+	TMap<uint32, RCViewData> ViewStateData;
+
+private:
 };
