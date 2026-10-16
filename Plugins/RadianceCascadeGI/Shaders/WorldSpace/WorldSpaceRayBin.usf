@@ -9,6 +9,7 @@
 #include "RCHashTable.ush"
 #include "RCCommon.ush"
 RaytracingAccelerationStructure TLAS;
+RaytracingAccelerationStructure FarTLAS;
 RWTexture2D<float4> Output;
 Texture2D SceneDepth;
 
@@ -90,7 +91,7 @@ RAY_TRACING_ENTRY_RAYGEN(MainRG)
 	FMaterialClosestHitPayload Payload = TraceRayAndAccumulateResults(
 		Ray,
 		TLAS,
-		TLAS, // FarFieldTLAS, unused when ENABLE_FAR_FIELD_TRACING==0
+		FarTLAS,
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 		RAY_TRACING_MASK_OPAQUE,
 		RandSequence,

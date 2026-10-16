@@ -2,6 +2,7 @@
 
 #include "IContentBrowserSingleton.h"
 #include "RenderTargetPool.h"
+#include "ScenePrivate.h"
 #include "SceneRendering.h"
 #include "SceneTextureParameters.h"
 #include "Core/RCLog.h"
@@ -447,6 +448,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->BinAge = AgeUAV;
 			PassParameters->DepositCounts = DepositCountBufferUAV;
 			PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
+			PassParameters->FarTLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::FarField);
 			PassParameters->BaseDirections = kDirectionCount;
 			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
@@ -512,6 +514,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->BinCounts = BinCountBufferUAV;
 			PassParameters->DepositCounts = DepositCountBufferUAV;
 			PassParameters->TLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::Base);
+			PassParameters->FarTLAS = ViewInfo.GetRayTracingSceneLayerViewChecked(ERayTracingSceneLayer::FarField);
 			PassParameters->BaseDirections = kDirectionCount;
 			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
 			PassParameters->BaseVoxelSize = BaseVoxelSize;

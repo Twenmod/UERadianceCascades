@@ -9,6 +9,7 @@
 #include "RCHashTable.ush"
 #include "RCCommon.ush"
 RaytracingAccelerationStructure TLAS;
+RaytracingAccelerationStructure FarTLAS;
 
 RWStructuredBuffer<uint4> TotalRadiance;
 RWStructuredBuffer<uint> Weights;
