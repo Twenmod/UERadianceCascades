@@ -61,6 +61,12 @@ namespace RC
 			TEXT(" 0: OFF;")
 			TEXT(" 1: ON."),
 			ECVF_RenderThreadSafe);
+		TAutoConsoleVariable<float> CVarRayPercentage(
+			TEXT("r.RC.WorldSpace.RayPercentage"),
+			1.0f,
+			TEXT("Percentage of rays to send, massively improves performance at the cost of noise.\n100% means 2spp if multibounce is enabled \n"),
+			ECVF_RenderThreadSafe);
+		
 
 	}
 	namespace ScreenSpace

@@ -148,6 +148,12 @@ public:
 			DisplayName = "History conservation",
 			Tooltip = "How much to temporally accumulate history, higher values take longer to update but have less flickering", ClampMin = "0.0", ClampMax="1.0", UIMin = "0", UIMax = "0.999", EditCondition = "bWorldSpaceEnabled"))
 	float WsHistoryConservation = 0.9f;
+	UPROPERTY(EditAnywhere, config, Category = "World Space|Quality",
+		meta = (ConsoleVariable = "r.RC.WorldSpace.RayPercentage",
+			DisplayName = "Ray percentage",
+			Tooltip = "Percentage of rays to send, massively improves performance at the cost of noise.\n100% means 2spp if multibounce is enabled \n", ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0", EditCondition = "bWorldSpaceEnabled"))
+	float WsRayPercentage = 1.0f;
+	
 
 	virtual FName GetCategoryName() const override { return FName("Plugins"); }
 

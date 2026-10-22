@@ -136,9 +136,11 @@ void MainCS(uint2 DispatchThreadId : SV_DispatchThreadID)
 		}
 	}
 
-	Output[PixelId] += float4((RadSum.xyz / RadSum.w) *
-	                          Intensity * GBufferData.BaseColor * View.PreExposure, 0.0);
-
+    if (RadSum.w > 0.0001)
+    {
+        Output[PixelId] += float4((RadSum.xyz / RadSum.w) *
+	                          Intensity * GBufferData.DiffuseColor * View.PreExposure, 0.0);
+    }
 
 	//Debug output to see cells
 	if (DebugOutputCells == 1)

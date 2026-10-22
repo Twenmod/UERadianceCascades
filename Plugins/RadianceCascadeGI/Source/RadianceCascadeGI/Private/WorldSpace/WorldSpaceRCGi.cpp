@@ -482,6 +482,7 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
+			PassParameters->RayPercentage = RC::WorldSpace::CVarRayPercentage.GetValueOnRenderThread();
 
 			PassParameters->View = ViewInfo.ViewUniformBuffer;
 			PassParameters->RaytracingLightGridData = ViewInfo.RayTracingLightGridUniformBuffer;
@@ -548,6 +549,8 @@ void FWorldSpaceRCGi::RenderDiffuseIndirectLight(const FScene& Scene, const FVie
 			PassParameters->NormalOffset = RC::WorldSpace::CVarNormalOffset.GetValueOnRenderThread();
 			PassParameters->BaseVoxelSize = BaseVoxelSize;
 			PassParameters->LevelBaseDist = LevelBaseDist;
+			PassParameters->RayPercentage = RC::WorldSpace::CVarRayPercentage.GetValueOnRenderThread();
+
 			const FSceneTextures& SceneTex = ViewInfo.GetSceneTextures();
 			PassParameters->SceneTextures.SceneDepthTexture = SceneTex.Depth.Resolve;
 			PassParameters->SceneTextures.GBufferATexture = SceneTex.GBufferA;

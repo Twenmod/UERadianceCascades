@@ -15,6 +15,7 @@ namespace RC
 		extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarProbeHalfDistance;
 		extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarHistoryConservation;
 		extern RADIANCECASCADEGI_API TAutoConsoleVariable<int32> CVarEnableMultiBounce;
+		extern RADIANCECASCADEGI_API TAutoConsoleVariable<float> CVarRayPercentage;
 	}
 	namespace ScreenSpace
 	{

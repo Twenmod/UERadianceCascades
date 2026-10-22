@@ -25,6 +25,8 @@ uint FinalAtlasExtend;
 uint BaseDirections; // Currently assumed to be 4 (32 real directions)
 float NormalOffset;
 
+float RayPercentage;
+
 static const uint kNumCascades = 4;
 static const float kC0Len = 1.5958; // sqrt(2*4*4 / (4*PI)), hardcoded for 4 base directions
 
@@ -36,6 +38,13 @@ float2 R2Int(uint i)
 RAY_TRACING_ENTRY_RAYGEN(MainRG)
 {
 	uint2 PixelId = DispatchRaysIndex().xy;
+
+    //Percentage of rays to keep to improve perf
+float RandVal = InterleavedGradientNoise(PixelId + 0.5, View.StateFrameIndex);
+	if (RandVal >= RayPercentage)
+	{
+		return;
+	}
 
 	float3 WorldPos = SecondaryHitPoints[PixelId.y * View.BufferSizeAndInvSize.x + PixelId.x];
 	if (WorldPos.x >= POSITIVE_INFINITY)
