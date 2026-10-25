@@ -55,10 +55,14 @@ POSITIVE_INFINITY;
 
 	float2 UV = (PixelCoord + 0.5) * View.BufferSizeAndInvSize.zw;
 
-	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
 
 	float DeviceZ = SceneDepth.Load(int3(PixelCoord, 0)).r;
+    if (DeviceZ <= 0) {
+    	return;
+    }
 	float3 TranslatedWorldPos = SvPositionToTranslatedWorld(float4(PixelCoord + 0.5, DeviceZ, 1.0));
+	
+	FGBufferData GBuffer = GetGBufferDataFromSceneTextures(UV);
 	float3 N = GBuffer.WorldNormal;
 	FRayDesc Ray;
 	Ray.Origin = TranslatedWorldPos + N * NormalOffset;
