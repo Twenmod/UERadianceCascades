@@ -1,14 +1,17 @@
 # Radiance cascade for GI in unreal
-A plugin that implements GI using Radiance cascades following 2 different techniques
+A plugin that implements GI using Radiance cascades with Ray splitting
 
+Article on how it works:
+[https://www.jacktollenaar.top/articles/split-rc.html](https://www.jacktollenaar.top/articles/split-rc.html)
 
 ### World Space
-A single bounce split radiance cascades implementation that is slower but gives world space results.
-<img width="1353" height="885" alt="image" src="https://github.com/user-attachments/assets/1c1a42fd-a42f-4491-a8a7-4496a07715f0" />
-<img width="1285" height="832" alt="image" src="https://github.com/user-attachments/assets/a30814f6-27b3-4544-a93f-5df2d7ff2b8c" />
+Multi bounce split radiance cascades implementation
+<img width="782" height="782" alt="StairRC" src="https://github.com/user-attachments/assets/34cfbb9b-b863-42b7-8588-09a28da6c8ba" />
+<img width="1116" height="697" alt="SaintRC" src="https://github.com/user-attachments/assets/f3aa0a67-6661-4ac4-bfab-d4a788bf2cbd" />
+<img width="1920" height="1080" alt="BedRC" src="https://github.com/user-attachments/assets/c542fd49-d96a-4655-9e00-c082958bbfd4" />
 
 ### Screen Space
-A single bounce screen space version that is very fast but only works on visible lights
+A single bounce screen space version that is very fast but only works on visible lights and has quite some artifacts.
 <img width="1344" height="871" alt="image" src="https://github.com/user-attachments/assets/505b430b-cadb-46c2-9fc3-c0ef6a6a09b5" />
 <img width="1346" height="866" alt="image" src="https://github.com/user-attachments/assets/6d53ccdd-0ae2-4cd4-b4e7-e21825ebd340" />
 
